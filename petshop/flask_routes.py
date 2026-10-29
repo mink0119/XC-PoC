@@ -7,7 +7,7 @@ app.url_map.strict_slashes = False
 def _cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Forwarded-For, X-Real-IP"
     return response
 
 @app.route("/api/v1/categories", methods=["GET"])
@@ -2310,6 +2310,11 @@ def get_docs():
     from app import invoke
     return invoke("GET", "/docs")
 
+@app.route("/lab", methods=["GET"])
+def get_lab():
+    from app import invoke
+    return invoke("GET", "/lab")
+
 @app.route("/static/swagger-ui.css", methods=["GET"])
 def get_static_swagger_ui_css():
     from app import invoke
@@ -2319,6 +2324,11 @@ def get_static_swagger_ui_css():
 def get_static_swagger_ui_bundle_js():
     from app import invoke
     return invoke("GET", "/static/swagger-ui-bundle.js")
+
+@app.route("/static/lab.html", methods=["GET"])
+def get_static_lab_html():
+    from app import invoke
+    return invoke("GET", "/static/lab.html")
 
 @app.route("/pet", methods=["GET"])
 def get_pet():

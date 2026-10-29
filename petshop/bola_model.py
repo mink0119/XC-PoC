@@ -131,13 +131,16 @@ def issue_token(
             }
 
     header = {"alg": "HS256", "typ": "JWT"}
+    # When operator_code is omitted, do not put it in the JWT — matches "no operator
+    # identity in token" traffic that XC should evaluate for false positives.
     payload = {
         "sub": f"customer-{customer_id}",
         "customer_id": customer_id,
-        "operator_code": operator_code,
         "iat": now,
         "exp": now + ACCESS_TOKEN_TTL_SEC,
     }
+    if operator_code is not None:
+        payload["operator_code"] = operator_code
     signing_input = f"{_b64url_json(header)}.{_b64url_json(payload)}".encode("ascii")
     signature = hmac.new(JWT_SECRET.encode("utf-8"), signing_input, hashlib.sha256).digest()
     token = f"{signing_input.decode('ascii')}.{_b64url(signature)}"

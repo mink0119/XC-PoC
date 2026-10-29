@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>BOLA Lab</title>
+  <style>
+    :root {
+      --bg: #f4f1ea;
+      --ink: #1c1917;
+      --muted: #57534e;
+      --card: #fffcf7;
+      --line: #d6d3d1;
+      --accent: #0f766e;
+      --accent-ink: #f0fdfa;
+      --benign: #166534;
+      --bola: #b91c1c;
+      --warn: #a16207;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.45 "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #dbeafe 0%, transparent 55%),
+        radial-gradient(900px 400px at 100% 0%, #fde68a 0%, transparent 50%),
+        var(--bg);
+      min-height: 100vh;
+    }
+    main {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 28px 18px 64px;
+    }
+    h1 { font-size: 1.6rem; margin: 0 0 6px; letter-spacing: -0.02em; }
+    .lead { color: var(--muted); margin: 0 0 22px; }
+    .panel {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 18px;
+      align-items: end;
+    }
+    label { display: grid; gap: 6px; font-size: 0.85rem; color: var(--muted); }
+    input[type="text"], input[type="number"] {
+      min-width: 180px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      font: inherit;
+      color: var(--ink);
+      background: #fff;
+    }
+    .toggle {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      color: var(--ink);
+      font-size: 0.95rem;
+    }
+    .toggle input { width: 18px; height: 18px; }
+    .hint { font-size: 0.82rem; color: var(--muted); margin-top: 8px; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 10px;
+    }
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      border-radius: 10px;
+      padding: 12px 12px;
+      font: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+    button:hover { border-color: var(--accent); }
+    button:disabled { opacity: 0.55; cursor: wait; }
+    button.primary {
+      background: var(--accent);
+      color: var(--accent-ink);
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+    button .sub { display: block; color: inherit; opacity: 0.75; font-size: 0.78rem; margin-top: 4px; }
+    .status {
+      min-height: 1.4em;
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin: 8px 0 0;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 7px 6px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { color: var(--muted); font-weight: 600; }
+    .tag {
+      display: inline-block;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .tag.benign { background: #dcfce7; color: var(--benign); }
+    .tag.bola { background: #fee2e2; color: var(--bola); }
+    .summary { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+    .pill {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.85rem;
+    }
+    .scroll { max-height: 420px; overflow: auto; }
+    code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 0.84em; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>BOLA Lab</h1>
+    <p class="lead">버튼으로 시나리오를 실행합니다. 추가 설치 없이 브라우저만 있으면 됩니다 (Windows / macOS).</p>
+
+    <section class="panel">
+      <div class="row">
+        <label>API Base URL
+          <input id="base" type="text" value="" placeholder="http://192.168.47.81" />
+        </label>
+        <label>순환 ID 개수 (1–500)
+          <input id="cyclicIds" type="number" min="1" max="500" value="264" />
+        </label>
+        <label>순환 샘플 수
+          <input id="cyclicSample" type="number" min="1" max="200" value="12" />
+        </label>
+        <label>고정형 샘플 수
+          <input id="fixedSample" type="number" min="1" max="50" value="6" />
+        </label>
+        <label>열거 개수
+          <input id="enumCount" type="number" min="1" max="100" value="10" />
+        </label>
+      </div>
+      <label class="toggle">
+        <input id="operatorCode" type="checkbox" />
+        <span>토큰에 <code>operator_code</code> 포함 (ON = 미래형 / OFF = 현재형·오탐 검토)</span>
+      </label>
+      <p class="hint">
+        OFF(기본): JWT에 운영자 코드 없음 → 같은 IP에서 다계정 사용이 XC에 오탐으로 보일 수 있는 현재 상황.<br />
+        ON: JWT에 <code>operator_code</code> 포함 → 운영자 신원이 토큰에 있을 때 XC가 어떻게 보는지 비교.
+      </p>
+    </section>
+
+    <section class="panel">
+      <div class="grid" id="buttons"></div>
+      <p class="status" id="status">대기 중</p>
+    </section>
+
+    <section class="panel">
+      <div class="summary" id="summary"></div>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>scenario</th>
+              <th>expected</th>
+              <th>status</th>
+              <th>IP</th>
+              <th>customer</th>
+              <th>op</th>
+              <th>path</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const ORDERS_PER_CUSTOMER = 2;
+    const PAYMENTS_PER_CUSTOMER = 1;
+
+    function orderIdFor(customerId, slot = 0) {
+      return (customerId - 1) * ORDERS_PER_CUSTOMER + slot + 1;
+    }
+    function customerIdForOrder(orderId) {
+      return Math.floor((orderId - 1) / ORDERS_PER_CUSTOMER) + 1;
+    }
+    function paymentIdFor(customerId, slot = 0) {
+      return (customerId - 1) * PAYMENTS_PER_CUSTOMER + slot + 1;
+    }
+    function expectedLabel(customerId, operatorCode, ownerId, assignedIds) {
+      if (customerId === ownerId) return "benign";
+      if (operatorCode && assignedIds && assignedIds.includes(ownerId)) return "benign";
+      return "bola";
+    }
+
+    function cfg() {
+      const base = (document.getElementById("base").value || window.location.origin).replace(/\/$/, "");
+      return {
+        base,
+        cyclicIds: clamp(Number(document.getElementById("cyclicIds").value), 1, 500),
+        cyclicSample: clamp(Number(document.getElementById("cyclicSample").value), 1, 200),
+        fixedSample: clamp(Number(document.getElementById("fixedSample").value), 1, 50),
+        enumCount: clamp(Number(document.getElementById("enumCount").value), 1, 100),
+        operatorCodeEnabled: document.getElementById("operatorCode").checked,
+      };
+    }
+    function clamp(n, lo, hi) {
+      if (!Number.isFinite(n)) return lo;
+      return Math.min(hi, Math.max(lo, Math.trunc(n)));
+    }
+
+    async function issueToken(base, customerId, operatorCode, issuedAt) {
+      const body = { customer_id: customerId };
+      if (operatorCode) body.operator_code = operatorCode;
+      if (issuedAt != null) body.issued_at = issuedAt;
+      const resp = await fetch(base + "/api/v1/auth/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!resp.ok) throw new Error("token " + resp.status);
+      const data = await resp.json();
+      return data.accessToken;
+    }
+
+    async function getPrivate(base, token, path, sourceIp) {
+      const resp = await fetch(base + path, {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer " + token,
+          "X-Forwarded-For": sourceIp,
+          "X-Real-IP": sourceIp,
+        },
+      });
+      let body = null;
+      try { body = await resp.json(); } catch (_) {}
+      return { status: resp.status, body };
+    }
+
+    function push(rows, row) { rows.push(row); }
+
+    async function scenarioPublicCatalog(c, rows) {
+      const paths = ["/api/v1/products", "/api/v1/categories", "/api/v1/brands", "/api/v1/foods", "/api/v1/toys"];
+      for (let i = 0; i < 5; i++) {
+        const path = paths[i % paths.length];
+        const resp = await fetch(c.base + path);
+        push(rows, {
+          scenario: "public_catalog", expected: "benign", status: resp.status,
+          source_ip: "192.0.2.50", customer_id: null, operator_code: null, path,
+        });
+      }
+    }
+
+    async function scenarioSelfOrder(c, rows) {
+      const customerId = 410;
+      const token = await issueToken(c.base, customerId, null);
+      const orderId = orderIdFor(customerId);
+      const path = "/api/v1/orders/" + orderId;
+      const { status } = await getPrivate(c.base, token, path, "192.0.2.60");
+      push(rows, {
+        scenario: "self_order",
+        expected: expectedLabel(customerId, null, customerId),
+        status, source_ip: "192.0.2.60", customer_id: customerId, operator_code: null, path,
+      });
+    }
+
+    async function scenarioCyclic(c, rows) {
+      const idCount = c.cyclicIds;
+      const code = idCount <= 264 ? "OP_CYCLE_A" : "OP_LARGE";
+      const assigned = Array.from({ length: idCount }, (_, i) => i + 1);
+      const ips = idCount > 264 ? ["203.0.113.50"] : ["203.0.113.10", "203.0.113.11"];
+      const tokenOp = c.operatorCodeEnabled ? code : null;
+      for (let i = 0; i < c.cyclicSample; i++) {
+        const customerId = assigned[i % assigned.length];
+        const sourceIp = ips[i % ips.length];
+        const token = await issueToken(c.base, customerId, tokenOp);
+        const orderId = orderIdFor(customerId);
+        const path = "/api/v1/orders/" + orderId;
+        const { status } = await getPrivate(c.base, token, path, sourceIp);
+        push(rows, {
+          scenario: "operator_cyclic",
+          expected: expectedLabel(customerId, tokenOp, customerId, assigned),
+          status, source_ip: sourceIp, customer_id: customerId, operator_code: tokenOp, path,
+        });
+      }
+    }
+
+    async function scenarioFixed(c, rows) {
+      const customerId = 405;
+      const code = "OP_FIXED_A";
+      const tokenOp = c.operatorCodeEnabled ? code : null;
+      const ips = Array.from({ length: 8 }, (_, i) => "198.51.100." + (i + 1));
+      for (let i = 0; i < c.fixedSample; i++) {
+        const sourceIp = ips[i % ips.length];
+        const token = await issueToken(c.base, customerId, tokenOp);
+        const path = "/api/v1/orders/" + orderIdFor(customerId);
+        const { status } = await getPrivate(c.base, token, path, sourceIp);
+        push(rows, {
+          scenario: "operator_fixed",
+          expected: expectedLabel(customerId, tokenOp, customerId, [customerId]),
+          status, source_ip: sourceIp, customer_id: customerId, operator_code: tokenOp, path,
+        });
+      }
+    }
+
+    async function scenarioTokenReissue(c, rows) {
+      const customerId = 406;
+      const code = "OP_FIXED_B";
+      const tokenOp = c.operatorCodeEnabled ? code : null;
+      const day0 = Math.floor(Date.UTC(2026, 9, 28, 9, 0, 0) / 1000);
+      const path = "/api/v1/orders/" + orderIdFor(customerId);
+      const seen = new Set();
+      for (let d = 0; d < 3; d++) {
+        const issuedAt = day0 + d * 86400;
+        const token = await issueToken(c.base, customerId, tokenOp, issuedAt);
+        seen.add(token);
+        const { status } = await getPrivate(c.base, token, path, "198.51.100.10");
+        push(rows, {
+          scenario: "access_token_reissue",
+          expected: expectedLabel(customerId, tokenOp, customerId, [customerId]),
+          status, source_ip: "198.51.100.10", customer_id: customerId, operator_code: tokenOp, path,
+        });
+      }
+      if (seen.size !== 3) throw new Error("access token 문자열이 일자마다 달라야 합니다");
+    }
+
+    async function scenarioCrossBola(c, rows) {
+      const attacker = 410;
+      const token = await issueToken(c.base, attacker, null);
+      const targets = [
+        ["/api/v1/orders/" + orderIdFor(1), 1],
+        ["/api/v1/payments/" + paymentIdFor(1), 1],
+        ["/api/v1/customers/1", 1],
+        ["/api/v1/pets/1/medical-records", 1],
+      ];
+      for (const [path, owner] of targets) {
+        const { status } = await getPrivate(c.base, token, path, "192.0.2.99");
+        push(rows, {
+          scenario: "cross_customer_bola",
+          expected: expectedLabel(attacker, null, owner),
+          status, source_ip: "192.0.2.99", customer_id: attacker, operator_code: null, path,
+        });
+      }
+    }
+
+    async function scenarioEnum(c, rows) {
+      const attacker = 410;
+      const token = await issueToken(c.base, attacker, null);
+      const start = orderIdFor(1);
+      for (let offset = 0; offset < c.enumCount; offset++) {
+        const orderId = start + offset;
+        const owner = customerIdForOrder(orderId);
+        const path = "/api/v1/orders/" + orderId;
+        const { status } = await getPrivate(c.base, token, path, "192.0.2.99");
+        push(rows, {
+          scenario: "id_enumeration",
+          expected: expectedLabel(attacker, null, owner),
+          status, source_ip: "192.0.2.99", customer_id: attacker, operator_code: null, path,
+        });
+      }
+    }
+
+    const SCENARIOS = [
+      { id: "public_catalog", title: "공개 카탈로그", sub: "benign", run: scenarioPublicCatalog },
+      { id: "self_order", title: "본인 주문", sub: "benign", run: scenarioSelfOrder },
+      { id: "operator_cyclic", title: "순환형 멀티계정", sub: "benign · ID 개수 조절", run: scenarioCyclic },
+      { id: "operator_fixed", title: "고정형 + IP 변경", sub: "benign · 오탐 후보", run: scenarioFixed },
+      { id: "access_token_reissue", title: "access_token 재발급", sub: "benign · 24h", run: scenarioTokenReissue },
+      { id: "cross_customer_bola", title: "교차 계정 BOLA", sub: "bola", run: scenarioCrossBola },
+      { id: "id_enumeration", title: "ID 열거", sub: "bola", run: scenarioEnum },
+      { id: "all", title: "전체 실행", sub: "위 시나리오 순차", run: null, primary: true },
+    ];
+
+    let busy = false;
+    const statusEl = document.getElementById("status");
+    const rowsEl = document.getElementById("rows");
+    const summaryEl = document.getElementById("summary");
+
+    function render(rows) {
+      rowsEl.innerHTML = rows.map((r, i) => `
+        <tr>
+          <td>${i + 1}</td>
+          <td>${r.scenario}</td>
+          <td><span class="tag ${r.expected}">${r.expected}</span></td>
+          <td>${r.status}</td>
+          <td>${r.source_ip || ""}</td>
+          <td>${r.customer_id ?? ""}</td>
+          <td>${r.operator_code ?? "—"}</td>
+          <td><code>${r.path}</code></td>
+        </tr>
+      `).join("");
+      const benign = rows.filter(r => r.expected === "benign").length;
+      const bola = rows.filter(r => r.expected === "bola").length;
+      const c = cfg();
+      summaryEl.innerHTML = `
+        <span class="pill">total ${rows.length}</span>
+        <span class="pill">benign ${benign}</span>
+        <span class="pill">bola ${bola}</span>
+        <span class="pill">operator_code ${c.operatorCodeEnabled ? "ON" : "OFF"}</span>
+        <span class="pill">cyclic-ids ${c.cyclicIds}</span>
+      `;
+    }
+
+    async function runOne(id) {
+      if (busy) return;
+      busy = true;
+      setButtonsDisabled(true);
+      const c = cfg();
+      document.getElementById("base").value = c.base;
+      document.getElementById("cyclicIds").value = c.cyclicIds;
+      statusEl.textContent = "실행 중: " + id + " …";
+      const rows = [];
+      try {
+        const health = await fetch(c.base + "/health");
+        if (!health.ok) throw new Error("health " + health.status);
+        if (id === "all") {
+          for (const s of SCENARIOS) {
+            if (s.id === "all") continue;
+            statusEl.textContent = "실행 중: " + s.id + " …";
+            await s.run(c, rows);
+            render(rows);
+          }
+        } else {
+          const s = SCENARIOS.find(x => x.id === id);
+          await s.run(c, rows);
+          render(rows);
+        }
+        statusEl.textContent = "완료 · " + rows.length + " requests";
+      } catch (err) {
+        statusEl.textContent = "실패: " + (err && err.message ? err.message : err);
+      } finally {
+        busy = false;
+        setButtonsDisabled(false);
+      }
+    }
+
+    function setButtonsDisabled(v) {
+      document.querySelectorAll("#buttons button").forEach(b => { b.disabled = v; });
+    }
+
+    function mount() {
+      if (!document.getElementById("base").value) {
+        document.getElementById("base").value = window.location.origin;
+      }
+      const box = document.getElementById("buttons");
+      box.innerHTML = SCENARIOS.map(s => `
+        <button type="button" data-id="${s.id}" class="${s.primary ? "primary" : ""}">
+          ${s.title}
+          <span class="sub">${s.sub}</span>
+        </button>
+      `).join("");
+      box.addEventListener("click", (ev) => {
+        const btn = ev.target.closest("button[data-id]");
+        if (!btn) return;
+        runOne(btn.getAttribute("data-id"));
+      });
+    }
+
+    mount();
+  </script>
+</body>
+</html>

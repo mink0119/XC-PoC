@@ -4,6 +4,10 @@
 Sends ordinary API traffic that matches the agreed scenarios. Labels
 (expected=benign|bola) are computed locally from bola_model — the server
 response is never annotated for detection.
+
+operator_code in JWT is optional (--operator-code / --no-operator-code):
+  off = current world (no operator identity in token; FP risk for XC)
+  on  = future token with operator_code claim
 """
 
 from __future__ import annotations
@@ -22,6 +26,9 @@ OUT_DIR = ROOT / "out"
 
 sys.path.insert(0, str(ROOT.parent / "petshop"))
 import bola_model  # noqa: E402
+
+DEFAULT_CYCLIC_IDS = 264
+MAX_CYCLIC_IDS = 500
 
 
 def issue(
@@ -55,6 +62,7 @@ def record(
     issued_at: int | None,
     owner_customer_id: int | None,
     notes: str,
+    operator_code_enabled: bool,
 ):
     rows.append({
         "scenario": scenario,
@@ -64,6 +72,7 @@ def record(
         "status": status,
         "source_ip": source_ip,
         "operator_code": operator_code,
+        "operator_code_enabled": operator_code_enabled,
         "customer_id": customer_id,
         "issued_at": issued_at,
         "owner_customer_id": owner_customer_id,
@@ -72,7 +81,6 @@ def record(
 
 
 def get_private(session, base, token, path, source_ip):
-    # X-Forwarded-For simulates the client's public IP for cloud/NAT scenarios.
     headers = {
         "Authorization": f"Bearer {token}",
         "X-Forwarded-For": source_ip,
@@ -86,7 +94,11 @@ def get_private(session, base, token, path, source_ip):
     return resp.status_code, body
 
 
-def run_catalog(session, base, rows, count: int):
+def op_code(enabled: bool, code: str) -> str | None:
+    return code if enabled else None
+
+
+def run_catalog(session, base, rows, count: int, operator_code_enabled: bool):
     paths = [
         "/api/v1/products",
         "/api/v1/categories",
@@ -112,10 +124,11 @@ def run_catalog(session, base, rows, count: int):
             issued_at=None,
             owner_customer_id=None,
             notes="공개 카탈로그 조회",
+            operator_code_enabled=operator_code_enabled,
         )
 
 
-def run_self_orders(session, base, rows):
+def run_self_orders(session, base, rows, operator_code_enabled: bool):
     customer_id = 410
     token = issue(session, base, customer_id, None)
     order_id = bola_model.order_id_for(customer_id, 0)
@@ -135,18 +148,31 @@ def run_self_orders(session, base, rows):
         issued_at=None,
         owner_customer_id=owner,
         notes="본인 주문 조회",
+        operator_code_enabled=operator_code_enabled,
     )
 
 
-def run_cyclic_operator(session, base, rows, sample: int):
-    code = "OP_CYCLE_A"
-    meta = bola_model.OPERATORS[code]
-    ips = meta["shared_ips"]
-    assigned = meta["customer_ids"]
+def run_cyclic_operator(
+    session,
+    base,
+    rows,
+    sample: int,
+    id_count: int,
+    operator_code_enabled: bool,
+):
+    """Cyclic multi-account. id_count selects how many assigned IDs to rotate (1..500)."""
+    if id_count < 1 or id_count > MAX_CYCLIC_IDS:
+        raise SystemExit(f"--cyclic-ids 는 1..{MAX_CYCLIC_IDS} 범위여야 합니다")
+    code = "OP_CYCLE_A" if id_count <= 264 else "OP_LARGE"
+    # Prefer contiguous 1..N for adjustable count (matches OP_LARGE pool).
+    assigned = list(range(1, id_count + 1))
+    # 1 IP when stressing scale; 2 IPs for the classic 264-style pattern.
+    ips = ["203.0.113.50"] if id_count > 264 else ["203.0.113.10", "203.0.113.11"]
+    token_op = op_code(operator_code_enabled, code)
     for i in range(sample):
         customer_id = assigned[i % len(assigned)]
         source_ip = ips[i % len(ips)]
-        token = issue(session, base, customer_id, code)
+        token = issue(session, base, customer_id, token_op)
         order_id = bola_model.order_id_for(customer_id, 0)
         owner = bola_model.customer_id_for_order(order_id)
         path = f"/api/v1/orders/{order_id}"
@@ -154,27 +180,32 @@ def run_cyclic_operator(session, base, rows, sample: int):
         record(
             rows,
             scenario="operator_cyclic",
-            expected=bola_model.expected_label(customer_id, code, owner),
+            expected=bola_model.expected_label(customer_id, token_op, owner),
             method="GET",
             path=path,
             status=status,
             source_ip=source_ip,
-            operator_code=code,
+            operator_code=token_op,
             customer_id=customer_id,
             issued_at=None,
             owner_customer_id=owner,
-            notes=f"순환형 운영자 {len(assigned)} ID 중 배정 계정 접근, 공유 IP",
+            notes=(
+                f"순환형 멀티계정 id_count={id_count}, "
+                f"operator_code={'on' if operator_code_enabled else 'off'}"
+            ),
+            operator_code_enabled=operator_code_enabled,
         )
 
 
-def run_fixed_operator(session, base, rows, sample: int):
+def run_fixed_operator(session, base, rows, sample: int, operator_code_enabled: bool):
     code = "OP_FIXED_A"
     meta = bola_model.OPERATORS[code]
     customer_id = meta["customer_ids"][0]
     ips = meta["shared_ips"]
+    token_op = op_code(operator_code_enabled, code)
     for i in range(sample):
         source_ip = ips[i % len(ips)]
-        token = issue(session, base, customer_id, code)
+        token = issue(session, base, customer_id, token_op)
         order_id = bola_model.order_id_for(customer_id, 0)
         owner = bola_model.customer_id_for_order(order_id)
         path = f"/api/v1/orders/{order_id}"
@@ -182,52 +213,54 @@ def run_fixed_operator(session, base, rows, sample: int):
         record(
             rows,
             scenario="operator_fixed",
-            expected=bola_model.expected_label(customer_id, code, owner),
+            expected=bola_model.expected_label(customer_id, token_op, owner),
             method="GET",
             path=path,
             status=status,
             source_ip=source_ip,
-            operator_code=code,
+            operator_code=token_op,
             customer_id=customer_id,
             issued_at=None,
             owner_customer_id=owner,
-            notes="고정형 운영자: ID·operator_code 고정, 소스 IP 변경",
+            notes="고정형: ID 고정, 소스 IP 변경",
+            operator_code_enabled=operator_code_enabled,
         )
 
 
-def run_access_token_reissue(session, base, rows):
-    """24h access-token re-issue: same identity claims, new iat/exp (new string)."""
+def run_access_token_reissue(session, base, rows, operator_code_enabled: bool):
     code = "OP_FIXED_B"
     customer_id = bola_model.OPERATORS[code]["customer_ids"][0]
     order_id = bola_model.order_id_for(customer_id, 0)
     owner = bola_model.customer_id_for_order(order_id)
     path = f"/api/v1/orders/{order_id}"
+    token_op = op_code(operator_code_enabled, code)
     day0 = int(datetime(2026, 10, 28, 9, 0, tzinfo=timezone.utc).timestamp())
     tokens = []
     for day_offset in (0, 1, 2):
         issued_at = day0 + day_offset * bola_model.ACCESS_TOKEN_TTL_SEC
-        token = issue(session, base, customer_id, code, issued_at=issued_at)
+        token = issue(session, base, customer_id, token_op, issued_at=issued_at)
         tokens.append(token)
         status, _body = get_private(session, base, token, path, "198.51.100.10")
         record(
             rows,
             scenario="access_token_reissue",
-            expected=bola_model.expected_label(customer_id, code, owner),
+            expected=bola_model.expected_label(customer_id, token_op, owner),
             method="GET",
             path=path,
             status=status,
             source_ip="198.51.100.10",
-            operator_code=code,
+            operator_code=token_op,
             customer_id=customer_id,
             issued_at=issued_at,
             owner_customer_id=owner,
-            notes="24h access_token 재발급: iat/exp만 갱신, customer_id·operator_code 유지",
+            notes="24h access_token 재발급 (iat/exp만 변경)",
+            operator_code_enabled=operator_code_enabled,
         )
     if len(set(tokens)) != 3:
         raise SystemExit("access_token_reissue 는 일자마다 다른 accessToken 이어야 합니다")
 
 
-def run_cross_customer_bola(session, base, rows):
+def run_cross_customer_bola(session, base, rows, operator_code_enabled: bool):
     attacker_id = 410
     victim_order = bola_model.order_id_for(1, 0)
     victim_payment = bola_model.payment_id_for(1, 0)
@@ -254,10 +287,11 @@ def run_cross_customer_bola(session, base, rows):
             issued_at=None,
             owner_customer_id=owner,
             notes=note,
+            operator_code_enabled=operator_code_enabled,
         )
 
 
-def run_id_enumeration(session, base, rows, count: int):
+def run_id_enumeration(session, base, rows, count: int, operator_code_enabled: bool):
     attacker_id = 410
     token = issue(session, base, attacker_id, None)
     start = bola_model.order_id_for(1, 0)
@@ -279,33 +313,7 @@ def run_id_enumeration(session, base, rows, count: int):
             issued_at=None,
             owner_customer_id=owner,
             notes="연속 order ID 열거",
-        )
-
-
-def run_large_operator(session, base, rows, sample: int):
-    code = "OP_LARGE"
-    meta = bola_model.OPERATORS[code]
-    ips = meta["shared_ips"]
-    assigned = meta["customer_ids"]
-    for i in range(sample):
-        customer_id = assigned[i % len(assigned)]
-        source_ip = ips[0]
-        token = issue(session, base, customer_id, code)
-        path = f"/api/v1/customers/{customer_id}/orders"
-        status, _body = get_private(session, base, token, path, source_ip)
-        record(
-            rows,
-            scenario="operator_large",
-            expected=bola_model.expected_label(customer_id, code, customer_id),
-            method="GET",
-            path=path,
-            status=status,
-            source_ip=source_ip,
-            operator_code=code,
-            customer_id=customer_id,
-            issued_at=None,
-            owner_customer_id=customer_id,
-            notes=f"단일 IP에서 최대 {len(assigned)} ID 순환(축소 샘플)",
+            operator_code_enabled=operator_code_enabled,
         )
 
 
@@ -329,29 +337,28 @@ SCENARIOS = (
     "operator_cyclic",
     "operator_fixed",
     "access_token_reissue",
-    "operator_large",
     "cross_customer_bola",
     "id_enumeration",
 )
 
 
-def run_selected(session, base, rows, name: str, args):
+def run_selected(session, base, rows, name: str, args, operator_code_enabled: bool):
     if name == "public_catalog":
-        run_catalog(session, base, rows, args.catalog)
+        run_catalog(session, base, rows, args.catalog, operator_code_enabled)
     elif name == "self_order":
-        run_self_orders(session, base, rows)
+        run_self_orders(session, base, rows, operator_code_enabled)
     elif name == "operator_cyclic":
-        run_cyclic_operator(session, base, rows, args.cyclic)
+        run_cyclic_operator(
+            session, base, rows, args.cyclic, args.cyclic_ids, operator_code_enabled
+        )
     elif name == "operator_fixed":
-        run_fixed_operator(session, base, rows, args.fixed)
+        run_fixed_operator(session, base, rows, args.fixed, operator_code_enabled)
     elif name == "access_token_reissue":
-        run_access_token_reissue(session, base, rows)
-    elif name == "operator_large":
-        run_large_operator(session, base, rows, args.large)
+        run_access_token_reissue(session, base, rows, operator_code_enabled)
     elif name == "cross_customer_bola":
-        run_cross_customer_bola(session, base, rows)
+        run_cross_customer_bola(session, base, rows, operator_code_enabled)
     elif name == "id_enumeration":
-        run_id_enumeration(session, base, rows, args.enum)
+        run_id_enumeration(session, base, rows, args.enum, operator_code_enabled)
     else:
         raise SystemExit(f"알 수 없는 시나리오: {name}")
 
@@ -359,20 +366,38 @@ def run_selected(session, base, rows, name: str, args):
 def main():
     parser = argparse.ArgumentParser(
         description="Pet Shop BOLA scenario runner",
-        epilog="시나리오 설명: ../docs/SCENARIOS.md",
+        epilog="GUI: http://<petshop-host>/lab  |  docs: ../docs/SCENARIOS.md",
     )
     parser.add_argument("--base", default="http://192.168.47.81", help="Pet Shop base URL")
     parser.add_argument(
         "--scenario",
         action="append",
         choices=SCENARIOS,
-        help="실행할 시나리오 (여러 번 지정 가능). 생략 시 전체 실행",
+        help="실행할 시나리오 (여러 번 지정 가능). 생략 시 전체",
     )
     parser.add_argument("--list", action="store_true", help="시나리오 이름만 출력")
+    parser.add_argument(
+        "--operator-code",
+        dest="operator_code_enabled",
+        action="store_true",
+        default=False,
+        help="JWT에 operator_code 포함 (미래형 토큰)",
+    )
+    parser.add_argument(
+        "--no-operator-code",
+        dest="operator_code_enabled",
+        action="store_false",
+        help="JWT에 operator_code 없음 (현재형, 기본값)",
+    )
     parser.add_argument("--catalog", type=int, default=30, help="공개 카탈로그 요청 수")
-    parser.add_argument("--cyclic", type=int, default=40, help="순환형 샘플 수")
+    parser.add_argument("--cyclic", type=int, default=40, help="순환형 샘플 요청 수")
+    parser.add_argument(
+        "--cyclic-ids",
+        type=int,
+        default=DEFAULT_CYCLIC_IDS,
+        help=f"순환에 쓸 계정 수 1..{MAX_CYCLIC_IDS} (기본 {DEFAULT_CYCLIC_IDS})",
+    )
     parser.add_argument("--fixed", type=int, default=16, help="고정형 샘플 수")
-    parser.add_argument("--large", type=int, default=40, help="대규모 샘플 수")
     parser.add_argument("--enum", type=int, default=20, help="ID 열거 샘플 수")
     parser.add_argument("--out", type=Path, default=None, help="JSONL output path")
     args = parser.parse_args()
@@ -391,18 +416,19 @@ def main():
 
     rows: list[dict] = []
     for name in selected:
-        run_selected(session, args.base, rows, name, args)
+        run_selected(session, args.base, rows, name, args, args.operator_code_enabled)
 
     with out_path.open("w", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
 
     summary = summarize(rows)
+    summary["operator_code_enabled"] = args.operator_code_enabled
+    summary["cyclic_ids"] = args.cyclic_ids
     summary_path = out_path.with_suffix(".summary.json")
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"out": str(out_path), "summary": summary}, ensure_ascii=False, indent=2))
 
-    # Hard checks only when those scenarios were included.
     cross = [r for r in rows if r["scenario"] == "cross_customer_bola"]
     if cross and any(r["expected"] != "bola" or r["status"] != 200 for r in cross):
         raise SystemExit("cross_customer_bola 는 expected=bola 이고 HTTP 200 이어야 합니다")

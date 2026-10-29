@@ -637,7 +637,7 @@ def _index():
             continue
         seen.add(href)
         links.append({"method": "GET", "href": href})
-    for href in ("/health", "/swagger.json", "/docs", "/pet", "/pet/findByStatus?status=available", "/pet/1"):
+    for href in ("/health", "/swagger.json", "/docs", "/lab", "/pet", "/pet/findByStatus?status=available", "/pet/1"):
         if href not in seen:
             links.append({"method": "GET", "href": href})
     return {
@@ -739,7 +739,7 @@ def _write_flask_routes():
         "def _cors(response):",
         '    response.headers["Access-Control-Allow-Origin"] = "*"',
         '    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"',
-        '    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"',
+        '    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Forwarded-For, X-Real-IP"',
         "    return response",
         "",
     ]
@@ -772,8 +772,10 @@ def _write_flask_routes():
         ("GET", "/health"),
         ("GET", "/swagger.json"),
         ("GET", "/docs"),
+        ("GET", "/lab"),
         ("GET", "/static/swagger-ui.css"),
         ("GET", "/static/swagger-ui-bundle.js"),
+        ("GET", "/static/lab.html"),
         ("GET", "/pet"),
         ("POST", "/pet"),
         ("GET", "/pet/findByStatus"),
@@ -984,6 +986,8 @@ def invoke(method, template, **ids):
         return _response(200, _openapi())
     if path == "/docs":
         return send_file(ROOT / "static" / "index.html", mimetype="text/html")
+    if path in ("/lab", "/static/lab.html"):
+        return send_file(ROOT / "static" / "lab.html", mimetype="text/html")
     if path == "/static/swagger-ui.css":
         return send_file(ROOT / "static" / "swagger-ui.css", mimetype="text/css")
     if path == "/static/swagger-ui-bundle.js":
@@ -1018,7 +1022,7 @@ def main():
         write_artifacts()
         return
     from flask_routes import app
-    print(f"Pet Shop API listening on 0.0.0.0:{PORT}  routes={len(ROUTES)}  docs=/docs")
+    print(f"Pet Shop API listening on 0.0.0.0:{PORT}  routes={len(ROUTES)}  docs=/docs  lab=/lab")
     app.run(host="0.0.0.0", port=PORT, threaded=True)
 
 
