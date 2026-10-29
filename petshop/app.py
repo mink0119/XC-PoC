@@ -735,11 +735,18 @@ def _write_flask_routes():
         'app = Flask("petshop")',
         "app.url_map.strict_slashes = False",
         "",
+        "@app.before_request",
+        "def _cors_preflight():",
+        "    from flask import request",
+        '    if request.method == "OPTIONS":',
+        '        return ("", 204)',
+        "",
         "@app.after_request",
         "def _cors(response):",
         '    response.headers["Access-Control-Allow-Origin"] = "*"',
         '    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"',
         '    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Forwarded-For, X-Real-IP"',
+        '    response.headers["Access-Control-Max-Age"] = "86400"',
         "    return response",
         "",
     ]
@@ -1022,7 +1029,7 @@ def main():
         write_artifacts()
         return
     from flask_routes import app
-    print(f"Pet Shop API listening on 0.0.0.0:{PORT}  routes={len(ROUTES)}  docs=/docs  lab=/lab")
+    print(f"Pet Shop API listening on 0.0.0.0:{PORT}  routes={len(ROUTES)}  docs=/docs  (attacker lab runs locally)")
     app.run(host="0.0.0.0", port=PORT, threaded=True)
 
 

@@ -2,27 +2,48 @@
 
 Pet Shop은 소유권을 검사하지 않습니다. 방어는 XC에서만 합니다.
 
-## GUI (권장)
-
-추가 패키지 없이 **브라우저만** 사용합니다 (Windows / macOS).
-
-1. Pet Shop이 떠 있는지 확인: `http://192.168.47.81/health`
-2. 랩 UI 열기: **[http://192.168.47.81/lab](http://192.168.47.81/lab)**
-3. 상단에서 설정
-   - **순환 ID 개수**: 1–500 (예: 264 또는 500)
-   - **토큰에 operator_code**: OFF = 현재형(오탐 검토) / ON = 미래형(운영자 claim)
-4. 시나리오 버튼 클릭 → 아래 표에 결과 표시
-
-로컬 Docker만 쓸 때도 동일하게 `http://127.0.0.1/lab` (또는 포트 포함 URL).
+## 역할 분리
 
 ```mermaid
 flowchart LR
-  ui["Browser /lab"]
-  api["Pet Shop API"]
+  local["Local PC\nserve_lab.py / run_bola.py"]
+  api["Pet Shop API\n192.168.47.81"]
   xc["XC later"]
-  ui -->|"fetch scenarios"| api
+  local -->|"attack HTTP"| api
   api -.-> xc
 ```
+
+| 위치 | 역할 |
+|------|------|
+| 로컬 `scenarios/` | 공격 시나리오 UI·CLI |
+| `192.168.47.81` | 취약한 **대상 API**만 |
+
+서버 `/lab` 은 “로컬에서 실행하세요” 안내만 합니다.
+
+## GUI (로컬, 권장)
+
+```bash
+cd scenarios
+python3 serve_lab.py
+# http://127.0.0.1:8765
+```
+
+1. **Target Base URL** = `http://192.168.47.81`
+2. 왼쪽 attack type 선택 → **Expected flow** / **Example behavior** 확인
+3. 옵션별 설명 확인 후 실행 (요청은 로컬 브라우저 → 대상 API)
+4. 하단 HTTP log · JSONL로 검증
+
+### 옵션 설명
+
+| 옵션 | 설명 |
+|------|------|
+| Target Base URL | 대상 Pet Shop. 로컬 UI 주소가 아님 |
+| 순환 ID 개수 | `operator_cyclic` 전용, 1–500. ≤264 → IP 2개 교대 / 265+ → IP 1개 |
+| 순환 샘플 수 | 순환형에서 보낼 GET 횟수 |
+| 고정형 샘플 수 | `operator_fixed`에서 IP를 바꿔 보내는 횟수 |
+| 열거 개수 | `id_enumeration`에서 연속 order ID 개수 |
+| operator_code OFF | 현재형. JWT에 운영자 claim 없음 → 오탐 검토 |
+| operator_code ON | 미래형. JWT에 `operator_code` 포함 |
 
 ---
 
@@ -33,48 +54,24 @@ flowchart LR
 | **OFF (기본)** | `customer_id` 만 | 지금처럼 토큰에 운영자 구분이 없음. 같은 IP·다계정 → XC **오탐** 후보 |
 | **ON** | `customer_id` + `operator_code` | 토큰에 운영자 신원이 있을 때 XC가 어떻게 묶는지 비교 |
 
-순환형에서 각 요청은 **그 계정의 자기 주문**을 치므로, 라벨상으로는 둘 다 `benign`일 수 있습니다.  
-차이는 XC가 보는 **토큰 claim**입니다. OFF면 운영자 묶음이 없고, ON이면 `OP_CYCLE_A` 등으로 묶을 수 있습니다.
-
-CLI:
+순환형에서 각 요청은 **그 계정의 자기 주문**을 치므로 라벨은 `benign`일 수 있습니다.  
+차이는 XC가 보는 **토큰 claim**입니다.
 
 ```bash
-# 현재형 (operator_code 없음) — 기본
 python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264
-
-# 미래형 (operator_code 포함)
 python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264 --operator-code
 ```
 
 ---
 
-## 순환형 ID 개수 (264 / 500은 같은 시나리오)
+## 순환형 ID 개수
 
-예전 `operator_large`는 제거했습니다.  
-**하나의 `operator_cyclic`** 에서 `--cyclic-ids` (GUI: 순환 ID 개수)만 바꿉니다.
+예전 `operator_large`는 제거. **`operator_cyclic` + ID 개수**만 사용합니다.
 
 | cyclic-ids | IP | 비고 |
 |------------|----|------|
 | ≤264 (기본 264) | IP 2개 교대 | 일반 순환 |
 | 265–500 | IP 1개 | 스케일 스트레스 |
-
-패턴은 동일: 배정(또는 자기) 계정 주문을 돌아가며 조회 → **benign**.
-
----
-
-## 전체 흐름
-
-```mermaid
-flowchart TD
-  start["UI button or CLI"]
-  health["GET /health"]
-  token["POST /auth/token"]
-  get["GET object + X-Forwarded-For"]
-  label["local expected label"]
-  out["table or JSONL"]
-
-  start --> health --> token --> get --> label --> out
-```
 
 ---
 
@@ -106,25 +103,20 @@ token customer_id=3  → GET /orders/5   IP …10
 JWT에 operator_code 없음
 ```
 
-### operator_cyclic 예시 (ids=3, operator_code ON)
-
-```text
-token customer_id=1, operator_code=OP_CYCLE_A → GET /orders/1
-...
-```
-
 ---
 
-## CLI (선택)
-
-GUI가 기본입니다. 자동화가 필요하면:
+## CLI
 
 ```bash
 cd scenarios
-python3 -m pip install -r requirements.txt   # requests 만
+python3 -m pip install -r requirements.txt
 python3 run_bola.py --list
 python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 500 --cyclic 20
-python3 run_bola.py --base http://192.168.47.81 --scenario cross_customer_bola --operator-code
+python3 run_bola.py --base http://192.168.47.81 --scenario cross_customer_bola
 ```
 
-`requests`가 없으면 GUI(`/lab`)만 써도 됩니다.
+| 파일 | 용도 |
+|------|------|
+| `bola-run-*.jsonl` | 시나리오 요약 라벨 |
+| `bola-run-*.http.jsonl` | 요청·응답 전체 |
+| `bola-run-*.summary.json` | benign/bola 집계 |

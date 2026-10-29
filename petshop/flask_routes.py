@@ -3,11 +3,18 @@ from flask import Flask
 app = Flask("petshop")
 app.url_map.strict_slashes = False
 
+@app.before_request
+def _cors_preflight():
+    from flask import request
+    if request.method == "OPTIONS":
+        return ("", 204)
+
 @app.after_request
 def _cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Forwarded-For, X-Real-IP"
+    response.headers["Access-Control-Max-Age"] = "86400"
     return response
 
 @app.route("/api/v1/categories", methods=["GET"])
