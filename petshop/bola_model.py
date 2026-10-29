@@ -11,10 +11,15 @@ import hashlib
 import hmac
 import json
 import os
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from typing import Any
 
 JWT_SECRET = os.environ.get("PETSHOP_JWT_SECRET", "petshop-bola-poc-secret")
+ACCESS_TOKEN_TTL_SEC = 86400  # 24h access token, similar to common OAuth daily TTL
+TOKEN_REUSE_WINDOW_SEC = 21600  # within 6h, return the same access token
+
+# (customer_id, operator_code) -> (issued_at, access_token)
+_token_cache: dict[tuple[int, str | None], tuple[int, str]] = {}
 
 # Stable operator codes used as the identity key (not source IP).
 OPERATORS: dict[str, dict[str, Any]] = {
@@ -97,33 +102,50 @@ def issue_token(
     *,
     customer_id: int,
     operator_code: str | None = None,
-    token_day: str | None = None,
+    issued_at: int | None = None,
 ) -> dict[str, Any]:
+    """Issue a 24h access token. Identity claims stay stable; iat/exp change the string.
+
+    If the same customer/operator asks again within TOKEN_REUSE_WINDOW_SEC of the
+    previous issue (and issued_at is omitted), the previous token is returned.
+    Pass issued_at explicitly to simulate a later day's re-issue for lab traffic.
+    """
     if customer_id < 1 or customer_id > CUSTOMER_COUNT:
         raise ValueError(f"customer_id 는 1..{CUSTOMER_COUNT} 범위여야 합니다")
     if operator_code is not None and operator_code not in OPERATORS:
         raise ValueError(f"알 수 없는 operator_code: {operator_code}")
     if operator_code is not None and customer_id not in OPERATORS[operator_code]["customer_ids"]:
         raise ValueError(f"operator {operator_code} 에 customer {customer_id} 가 배정되지 않았습니다")
+    if issued_at is not None and (not isinstance(issued_at, int) or issued_at < 0):
+        raise ValueError("issued_at 는 unix epoch 초(정수)여야 합니다")
 
-    day = token_day or date.today().isoformat()
-    now = datetime.now(timezone.utc)
+    now = int(datetime.now(timezone.utc).timestamp()) if issued_at is None else issued_at
+    cache_key = (customer_id, operator_code)
+    if issued_at is None and cache_key in _token_cache:
+        prev_iat, prev_token = _token_cache[cache_key]
+        if now - prev_iat < TOKEN_REUSE_WINDOW_SEC and now < prev_iat + ACCESS_TOKEN_TTL_SEC:
+            return {
+                "accessToken": prev_token,
+                "tokenType": "Bearer",
+                "expiresIn": max(0, prev_iat + ACCESS_TOKEN_TTL_SEC - now),
+            }
+
     header = {"alg": "HS256", "typ": "JWT"}
     payload = {
         "sub": f"customer-{customer_id}",
         "customer_id": customer_id,
         "operator_code": operator_code,
-        "token_day": day,
-        "iat": int(now.timestamp()),
-        "exp": int(now.timestamp()) + 86400,
+        "iat": now,
+        "exp": now + ACCESS_TOKEN_TTL_SEC,
     }
     signing_input = f"{_b64url_json(header)}.{_b64url_json(payload)}".encode("ascii")
     signature = hmac.new(JWT_SECRET.encode("utf-8"), signing_input, hashlib.sha256).digest()
     token = f"{signing_input.decode('ascii')}.{_b64url(signature)}"
+    _token_cache[cache_key] = (now, token)
     return {
         "accessToken": token,
         "tokenType": "Bearer",
-        "expiresIn": 86400,
+        "expiresIn": ACCESS_TOKEN_TTL_SEC,
     }
 
 

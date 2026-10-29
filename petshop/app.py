@@ -587,10 +587,10 @@ def _openapi():
             "title": "Pet Shop API",
             "description": (
                 "스토어프론트, 주문, 계정 API. "
-                "POST /api/v1/auth/token 으로 customer_id·operator_code JWT를 발급한다. "
+                "POST /api/v1/auth/token 은 24h access token(JWT)을 발급한다. "
                 "비공개 객체 조회는 소유권을 검사하지 않는다."
             ),
-            "version": "1.3.0",
+            "version": "1.4.0",
         },
         "components": {
             "securitySchemes": {
@@ -890,18 +890,18 @@ def _handle_auth_token(body):
         return _response(400, _error("JSON object 가 필요합니다"))
     customer_id = body.get("customer_id")
     operator_code = body.get("operator_code")
-    token_day = body.get("token_day")
+    issued_at = body.get("issued_at")
     if not isinstance(customer_id, int) or customer_id < 1:
         return _response(400, _error("customer_id 는 양의 정수여야 합니다"))
     if operator_code is not None and not isinstance(operator_code, str):
         return _response(400, _error("operator_code 는 문자열이어야 합니다"))
-    if token_day is not None and not isinstance(token_day, str):
-        return _response(400, _error("token_day 는 YYYY-MM-DD 문자열이어야 합니다"))
+    if issued_at is not None and not isinstance(issued_at, int):
+        return _response(400, _error("issued_at 는 unix epoch 초(정수)여야 합니다"))
     try:
         issued = bola_model.issue_token(
             customer_id=customer_id,
             operator_code=operator_code,
-            token_day=token_day,
+            issued_at=issued_at,
         )
     except ValueError as exc:
         return _response(400, _error(str(exc)))

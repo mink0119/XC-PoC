@@ -2,8 +2,8 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Pet Shop API",
-    "description": "스토어프론트, 주문, 계정 API. POST /api/v1/auth/token 으로 customer_id·operator_code JWT를 발급한다. 비공개 객체 조회는 소유권을 검사하지 않는다.",
-    "version": "1.3.0"
+    "description": "스토어프론트, 주문, 계정 API. POST /api/v1/auth/token 은 24h access token(JWT)을 발급한다. 비공개 객체 조회는 소유권을 검사하지 않는다.",
+    "version": "1.4.0"
   },
   "components": {
     "securitySchemes": {

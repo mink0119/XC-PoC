@@ -12,7 +12,7 @@ import argparse
 import json
 import sys
 import time
-from datetime import date
+from datetime import datetime, timezone
 from pathlib import Path
 
 import requests
@@ -24,10 +24,18 @@ sys.path.insert(0, str(ROOT.parent / "petshop"))
 import bola_model  # noqa: E402
 
 
-def issue(session: requests.Session, base: str, customer_id: int, operator_code: str | None, token_day: str) -> str:
-    body = {"customer_id": customer_id, "token_day": token_day}
+def issue(
+    session: requests.Session,
+    base: str,
+    customer_id: int,
+    operator_code: str | None,
+    issued_at: int | None = None,
+) -> str:
+    body: dict = {"customer_id": customer_id}
     if operator_code:
         body["operator_code"] = operator_code
+    if issued_at is not None:
+        body["issued_at"] = issued_at
     resp = session.post(f"{base}/api/v1/auth/token", json=body, timeout=10)
     resp.raise_for_status()
     return resp.json()["accessToken"]
@@ -44,7 +52,7 @@ def record(
     source_ip: str,
     operator_code: str | None,
     customer_id: int | None,
-    token_day: str | None,
+    issued_at: int | None,
     owner_customer_id: int | None,
     notes: str,
 ):
@@ -57,7 +65,7 @@ def record(
         "source_ip": source_ip,
         "operator_code": operator_code,
         "customer_id": customer_id,
-        "token_day": token_day,
+        "issued_at": issued_at,
         "owner_customer_id": owner_customer_id,
         "notes": notes,
     })
@@ -65,7 +73,6 @@ def record(
 
 def get_private(session, base, token, path, source_ip):
     # X-Forwarded-For simulates the client's public IP for cloud/NAT scenarios.
-    # It is not a detection marker — just the source identity under test.
     headers = {
         "Authorization": f"Bearer {token}",
         "X-Forwarded-For": source_ip,
@@ -102,15 +109,15 @@ def run_catalog(session, base, rows, count: int):
             source_ip="192.0.2.50",
             operator_code=None,
             customer_id=None,
-            token_day=None,
+            issued_at=None,
             owner_customer_id=None,
             notes="공개 카탈로그 조회",
         )
 
 
-def run_self_orders(session, base, rows, token_day: str):
+def run_self_orders(session, base, rows):
     customer_id = 410
-    token = issue(session, base, customer_id, None, token_day)
+    token = issue(session, base, customer_id, None)
     order_id = bola_model.order_id_for(customer_id, 0)
     owner = bola_model.customer_id_for_order(order_id)
     path = f"/api/v1/orders/{order_id}"
@@ -125,13 +132,13 @@ def run_self_orders(session, base, rows, token_day: str):
         source_ip="192.0.2.60",
         operator_code=None,
         customer_id=customer_id,
-        token_day=token_day,
+        issued_at=None,
         owner_customer_id=owner,
         notes="본인 주문 조회",
     )
 
 
-def run_cyclic_operator(session, base, rows, token_day: str, sample: int):
+def run_cyclic_operator(session, base, rows, sample: int):
     code = "OP_CYCLE_A"
     meta = bola_model.OPERATORS[code]
     ips = meta["shared_ips"]
@@ -139,7 +146,7 @@ def run_cyclic_operator(session, base, rows, token_day: str, sample: int):
     for i in range(sample):
         customer_id = assigned[i % len(assigned)]
         source_ip = ips[i % len(ips)]
-        token = issue(session, base, customer_id, code, token_day)
+        token = issue(session, base, customer_id, code)
         order_id = bola_model.order_id_for(customer_id, 0)
         owner = bola_model.customer_id_for_order(order_id)
         path = f"/api/v1/orders/{order_id}"
@@ -154,20 +161,20 @@ def run_cyclic_operator(session, base, rows, token_day: str, sample: int):
             source_ip=source_ip,
             operator_code=code,
             customer_id=customer_id,
-            token_day=token_day,
+            issued_at=None,
             owner_customer_id=owner,
             notes=f"순환형 운영자 {len(assigned)} ID 중 배정 계정 접근, 공유 IP",
         )
 
 
-def run_fixed_operator(session, base, rows, token_day: str, sample: int):
+def run_fixed_operator(session, base, rows, sample: int):
     code = "OP_FIXED_A"
     meta = bola_model.OPERATORS[code]
     customer_id = meta["customer_ids"][0]
     ips = meta["shared_ips"]
     for i in range(sample):
         source_ip = ips[i % len(ips)]
-        token = issue(session, base, customer_id, code, token_day)
+        token = issue(session, base, customer_id, code)
         order_id = bola_model.order_id_for(customer_id, 0)
         owner = bola_model.customer_id_for_order(order_id)
         path = f"/api/v1/orders/{order_id}"
@@ -182,24 +189,29 @@ def run_fixed_operator(session, base, rows, token_day: str, sample: int):
             source_ip=source_ip,
             operator_code=code,
             customer_id=customer_id,
-            token_day=token_day,
+            issued_at=None,
             owner_customer_id=owner,
             notes="고정형 운영자: ID·operator_code 고정, 소스 IP 변경",
         )
 
 
-def run_daily_token_rotation(session, base, rows):
+def run_access_token_reissue(session, base, rows):
+    """24h access-token re-issue: same identity claims, new iat/exp (new string)."""
     code = "OP_FIXED_B"
     customer_id = bola_model.OPERATORS[code]["customer_ids"][0]
     order_id = bola_model.order_id_for(customer_id, 0)
     owner = bola_model.customer_id_for_order(order_id)
     path = f"/api/v1/orders/{order_id}"
-    for day in ("2026-10-28", "2026-10-29", "2026-10-30"):
-        token = issue(session, base, customer_id, code, day)
+    day0 = int(datetime(2026, 10, 28, 9, 0, tzinfo=timezone.utc).timestamp())
+    tokens = []
+    for day_offset in (0, 1, 2):
+        issued_at = day0 + day_offset * bola_model.ACCESS_TOKEN_TTL_SEC
+        token = issue(session, base, customer_id, code, issued_at=issued_at)
+        tokens.append(token)
         status, _body = get_private(session, base, token, path, "198.51.100.10")
         record(
             rows,
-            scenario="daily_token_rotation",
+            scenario="access_token_reissue",
             expected=bola_model.expected_label(customer_id, code, owner),
             method="GET",
             path=path,
@@ -207,18 +219,20 @@ def run_daily_token_rotation(session, base, rows):
             source_ip="198.51.100.10",
             operator_code=code,
             customer_id=customer_id,
-            token_day=day,
+            issued_at=issued_at,
             owner_customer_id=owner,
-            notes="토큰 문자열은 일자마다 변경, operator_code 유지",
+            notes="24h access_token 재발급: iat/exp만 갱신, customer_id·operator_code 유지",
         )
+    if len(set(tokens)) != 3:
+        raise SystemExit("access_token_reissue 는 일자마다 다른 accessToken 이어야 합니다")
 
 
-def run_cross_customer_bola(session, base, rows, token_day: str):
+def run_cross_customer_bola(session, base, rows):
     attacker_id = 410
     victim_order = bola_model.order_id_for(1, 0)
     victim_payment = bola_model.payment_id_for(1, 0)
     victim_pet = bola_model.pet_id_for(1)
-    token = issue(session, base, attacker_id, None, token_day)
+    token = issue(session, base, attacker_id, None)
     targets = [
         (f"/api/v1/orders/{victim_order}", 1, "타 계정 주문"),
         (f"/api/v1/payments/{victim_payment}", 1, "타 계정 결제"),
@@ -237,15 +251,15 @@ def run_cross_customer_bola(session, base, rows, token_day: str):
             source_ip="192.0.2.99",
             operator_code=None,
             customer_id=attacker_id,
-            token_day=token_day,
+            issued_at=None,
             owner_customer_id=owner,
             notes=note,
         )
 
 
-def run_id_enumeration(session, base, rows, token_day: str, count: int):
+def run_id_enumeration(session, base, rows, count: int):
     attacker_id = 410
-    token = issue(session, base, attacker_id, None, token_day)
+    token = issue(session, base, attacker_id, None)
     start = bola_model.order_id_for(1, 0)
     for offset in range(count):
         order_id = start + offset
@@ -262,13 +276,13 @@ def run_id_enumeration(session, base, rows, token_day: str, count: int):
             source_ip="192.0.2.99",
             operator_code=None,
             customer_id=attacker_id,
-            token_day=token_day,
+            issued_at=None,
             owner_customer_id=owner,
             notes="연속 order ID 열거",
         )
 
 
-def run_large_operator(session, base, rows, token_day: str, sample: int):
+def run_large_operator(session, base, rows, sample: int):
     code = "OP_LARGE"
     meta = bola_model.OPERATORS[code]
     ips = meta["shared_ips"]
@@ -276,7 +290,7 @@ def run_large_operator(session, base, rows, token_day: str, sample: int):
     for i in range(sample):
         customer_id = assigned[i % len(assigned)]
         source_ip = ips[0]
-        token = issue(session, base, customer_id, code, token_day)
+        token = issue(session, base, customer_id, code)
         path = f"/api/v1/customers/{customer_id}/orders"
         status, _body = get_private(session, base, token, path, source_ip)
         record(
@@ -289,7 +303,7 @@ def run_large_operator(session, base, rows, token_day: str, sample: int):
             source_ip=source_ip,
             operator_code=code,
             customer_id=customer_id,
-            token_day=token_day,
+            issued_at=None,
             owner_customer_id=customer_id,
             notes=f"단일 IP에서 최대 {len(assigned)} ID 순환(축소 샘플)",
         )
@@ -311,8 +325,7 @@ def summarize(rows: list[dict]) -> dict:
 
 def main():
     parser = argparse.ArgumentParser(description="Pet Shop BOLA scenario runner")
-    parser.add_argument("--base", default="http://127.0.0.1:80", help="Pet Shop base URL")
-    parser.add_argument("--token-day", default=date.today().isoformat())
+    parser.add_argument("--base", default="http://192.168.47.81", help="Pet Shop base URL")
     parser.add_argument("--catalog", type=int, default=30, help="공개 카탈로그 요청 수")
     parser.add_argument("--cyclic", type=int, default=40, help="순환형 운영자 샘플 수")
     parser.add_argument("--fixed", type=int, default=16, help="고정형 운영자 샘플 수")
@@ -330,13 +343,13 @@ def main():
 
     rows: list[dict] = []
     run_catalog(session, args.base, rows, args.catalog)
-    run_self_orders(session, args.base, rows, args.token_day)
-    run_cyclic_operator(session, args.base, rows, args.token_day, args.cyclic)
-    run_fixed_operator(session, args.base, rows, args.token_day, args.fixed)
-    run_daily_token_rotation(session, args.base, rows)
-    run_large_operator(session, args.base, rows, args.token_day, args.large)
-    run_cross_customer_bola(session, args.base, rows, args.token_day)
-    run_id_enumeration(session, args.base, rows, args.token_day, args.enum)
+    run_self_orders(session, args.base, rows)
+    run_cyclic_operator(session, args.base, rows, args.cyclic)
+    run_fixed_operator(session, args.base, rows, args.fixed)
+    run_access_token_reissue(session, args.base, rows)
+    run_large_operator(session, args.base, rows, args.large)
+    run_cross_customer_bola(session, args.base, rows)
+    run_id_enumeration(session, args.base, rows, args.enum)
 
     with out_path.open("w", encoding="utf-8") as fh:
         for row in rows:
