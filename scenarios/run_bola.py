@@ -323,17 +323,65 @@ def summarize(rows: list[dict]) -> dict:
     }
 
 
+SCENARIOS = (
+    "public_catalog",
+    "self_order",
+    "operator_cyclic",
+    "operator_fixed",
+    "access_token_reissue",
+    "operator_large",
+    "cross_customer_bola",
+    "id_enumeration",
+)
+
+
+def run_selected(session, base, rows, name: str, args):
+    if name == "public_catalog":
+        run_catalog(session, base, rows, args.catalog)
+    elif name == "self_order":
+        run_self_orders(session, base, rows)
+    elif name == "operator_cyclic":
+        run_cyclic_operator(session, base, rows, args.cyclic)
+    elif name == "operator_fixed":
+        run_fixed_operator(session, base, rows, args.fixed)
+    elif name == "access_token_reissue":
+        run_access_token_reissue(session, base, rows)
+    elif name == "operator_large":
+        run_large_operator(session, base, rows, args.large)
+    elif name == "cross_customer_bola":
+        run_cross_customer_bola(session, base, rows)
+    elif name == "id_enumeration":
+        run_id_enumeration(session, base, rows, args.enum)
+    else:
+        raise SystemExit(f"알 수 없는 시나리오: {name}")
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Pet Shop BOLA scenario runner")
+    parser = argparse.ArgumentParser(
+        description="Pet Shop BOLA scenario runner",
+        epilog="시나리오 설명: ../docs/SCENARIOS.md",
+    )
     parser.add_argument("--base", default="http://192.168.47.81", help="Pet Shop base URL")
+    parser.add_argument(
+        "--scenario",
+        action="append",
+        choices=SCENARIOS,
+        help="실행할 시나리오 (여러 번 지정 가능). 생략 시 전체 실행",
+    )
+    parser.add_argument("--list", action="store_true", help="시나리오 이름만 출력")
     parser.add_argument("--catalog", type=int, default=30, help="공개 카탈로그 요청 수")
-    parser.add_argument("--cyclic", type=int, default=40, help="순환형 운영자 샘플 수")
-    parser.add_argument("--fixed", type=int, default=16, help="고정형 운영자 샘플 수")
-    parser.add_argument("--large", type=int, default=40, help="대규모 운영자 샘플 수")
+    parser.add_argument("--cyclic", type=int, default=40, help="순환형 샘플 수")
+    parser.add_argument("--fixed", type=int, default=16, help="고정형 샘플 수")
+    parser.add_argument("--large", type=int, default=40, help="대규모 샘플 수")
     parser.add_argument("--enum", type=int, default=20, help="ID 열거 샘플 수")
     parser.add_argument("--out", type=Path, default=None, help="JSONL output path")
     args = parser.parse_args()
 
+    if args.list:
+        print("\n".join(SCENARIOS))
+        return
+
+    selected = args.scenario or list(SCENARIOS)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = args.out or (OUT_DIR / f"bola-run-{int(time.time())}.jsonl")
 
@@ -342,14 +390,8 @@ def main():
     health.raise_for_status()
 
     rows: list[dict] = []
-    run_catalog(session, args.base, rows, args.catalog)
-    run_self_orders(session, args.base, rows)
-    run_cyclic_operator(session, args.base, rows, args.cyclic)
-    run_fixed_operator(session, args.base, rows, args.fixed)
-    run_access_token_reissue(session, args.base, rows)
-    run_large_operator(session, args.base, rows, args.large)
-    run_cross_customer_bola(session, args.base, rows)
-    run_id_enumeration(session, args.base, rows, args.enum)
+    for name in selected:
+        run_selected(session, args.base, rows, name, args)
 
     with out_path.open("w", encoding="utf-8") as fh:
         for row in rows:
@@ -360,14 +402,15 @@ def main():
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({"out": str(out_path), "summary": summary}, ensure_ascii=False, indent=2))
 
+    # Hard checks only when those scenarios were included.
     cross = [r for r in rows if r["scenario"] == "cross_customer_bola"]
-    if not cross or any(r["expected"] != "bola" or r["status"] != 200 for r in cross):
+    if cross and any(r["expected"] != "bola" or r["status"] != 200 for r in cross):
         raise SystemExit("cross_customer_bola 는 expected=bola 이고 HTTP 200 이어야 합니다")
     cyclic = [r for r in rows if r["scenario"] == "operator_cyclic"]
-    if not cyclic or any(r["expected"] != "benign" or r["status"] != 200 for r in cyclic):
+    if cyclic and any(r["expected"] != "benign" or r["status"] != 200 for r in cyclic):
         raise SystemExit("operator_cyclic 는 expected=benign 이고 HTTP 200 이어야 합니다")
-    if summary["bola"] < 1 or summary["benign"] < 1:
-        raise SystemExit("benign/bola 라벨이 모두 필요합니다")
+    if len(selected) == len(SCENARIOS) and (summary["bola"] < 1 or summary["benign"] < 1):
+        raise SystemExit("전체 실행 시 benign/bola 라벨이 모두 필요합니다")
 
 
 if __name__ == "__main__":
