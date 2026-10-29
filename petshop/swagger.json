@@ -11136,7 +11136,7 @@
         "tags": [
           "auth"
         ],
-        "summary": "운영사/고객 JWT 발급",
+        "summary": "계정 JWT 발급",
         "operationId": "post_api_v1_auth_token",
         "responses": {
           "201": {

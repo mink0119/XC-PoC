@@ -104,7 +104,7 @@ def run_catalog(session, base, rows, count: int):
             customer_id=None,
             token_day=None,
             owner_customer_id=None,
-            notes="공개 카탈로그(시세 조회 대응)",
+            notes="공개 카탈로그 조회",
         )
 
 
@@ -127,7 +127,7 @@ def run_self_orders(session, base, rows, token_day: str):
         customer_id=customer_id,
         token_day=token_day,
         owner_customer_id=owner,
-        notes="고객 본인 주문 조회",
+        notes="본인 주문 조회",
     )
 
 
@@ -156,7 +156,7 @@ def run_cyclic_operator(session, base, rows, token_day: str, sample: int):
             customer_id=customer_id,
             token_day=token_day,
             owner_customer_id=owner,
-            notes=f"순환형 운영사 {len(assigned)} ID 중 배정 계정 접근, 공유 IP",
+            notes=f"순환형 운영자 {len(assigned)} ID 중 배정 계정 접근, 공유 IP",
         )
 
 
@@ -184,7 +184,7 @@ def run_fixed_operator(session, base, rows, token_day: str, sample: int):
             customer_id=customer_id,
             token_day=token_day,
             owner_customer_id=owner,
-            notes="고정형 운영사: ID·operator_code 고정, 소스 IP 변경",
+            notes="고정형 운영자: ID·operator_code 고정, 소스 IP 변경",
         )
 
 
@@ -220,10 +220,10 @@ def run_cross_customer_bola(session, base, rows, token_day: str):
     victim_pet = bola_model.pet_id_for(1)
     token = issue(session, base, attacker_id, None, token_day)
     targets = [
-        (f"/api/v1/orders/{victim_order}", 1, "타 고객 주문"),
-        (f"/api/v1/payments/{victim_payment}", 1, "타 고객 결제"),
-        ("/api/v1/customers/1", 1, "타 고객 프로필"),
-        (f"/api/v1/pets/{victim_pet}/medical-records", 1, "타 고객 진료기록"),
+        (f"/api/v1/orders/{victim_order}", 1, "타 계정 주문"),
+        (f"/api/v1/payments/{victim_payment}", 1, "타 계정 결제"),
+        ("/api/v1/customers/1", 1, "타 계정 프로필"),
+        (f"/api/v1/pets/{victim_pet}/medical-records", 1, "타 계정 진료기록"),
     ]
     for path, owner, note in targets:
         status, _body = get_private(session, base, token, path, "192.0.2.99")
@@ -314,9 +314,9 @@ def main():
     parser.add_argument("--base", default="http://127.0.0.1:80", help="Pet Shop base URL")
     parser.add_argument("--token-day", default=date.today().isoformat())
     parser.add_argument("--catalog", type=int, default=30, help="공개 카탈로그 요청 수")
-    parser.add_argument("--cyclic", type=int, default=40, help="순환형 운영사 샘플 수")
-    parser.add_argument("--fixed", type=int, default=16, help="고정형 운영사 샘플 수")
-    parser.add_argument("--large", type=int, default=40, help="대규모 운영사 샘플 수")
+    parser.add_argument("--cyclic", type=int, default=40, help="순환형 운영자 샘플 수")
+    parser.add_argument("--fixed", type=int, default=16, help="고정형 운영자 샘플 수")
+    parser.add_argument("--large", type=int, default=40, help="대규모 운영자 샘플 수")
     parser.add_argument("--enum", type=int, default=20, help="ID 열거 샘플 수")
     parser.add_argument("--out", type=Path, default=None, help="JSONL output path")
     args = parser.parse_args()

@@ -19,55 +19,55 @@ JWT_SECRET = os.environ.get("PETSHOP_JWT_SECRET", "petshop-bola-poc-secret")
 # Stable operator codes used as the identity key (not source IP).
 OPERATORS: dict[str, dict[str, Any]] = {
     "OP_CYCLE_A": {
-        "name": "순환형 A",
+        "name": "Cyclic A",
         "mode": "cyclic",
         "customer_ids": list(range(1, 265)),  # 264 IDs
         "shared_ips": ["203.0.113.10", "203.0.113.11"],
     },
     "OP_CYCLE_B": {
-        "name": "순환형 B",
+        "name": "Cyclic B",
         "mode": "cyclic",
         "customer_ids": list(range(265, 345)),
         "shared_ips": ["203.0.113.20"],
     },
     "OP_CYCLE_C": {
-        "name": "순환형 C",
+        "name": "Cyclic C",
         "mode": "cyclic",
         "customer_ids": list(range(345, 405)),
         "shared_ips": ["203.0.113.30", "203.0.113.31"],
     },
     "OP_FIXED_A": {
-        "name": "고정형 A",
+        "name": "Fixed A",
         "mode": "fixed",
         "customer_ids": [405],
         "shared_ips": [f"198.51.100.{i}" for i in range(1, 9)],
     },
     "OP_FIXED_B": {
-        "name": "고정형 B",
+        "name": "Fixed B",
         "mode": "fixed",
         "customer_ids": [406],
         "shared_ips": [f"198.51.100.{i}" for i in range(10, 18)],
     },
     "OP_FIXED_C": {
-        "name": "고정형 C",
+        "name": "Fixed C",
         "mode": "fixed",
         "customer_ids": [407],
         "shared_ips": [f"198.51.100.{i}" for i in range(20, 28)],
     },
     "OP_LARGE": {
-        "name": "대규모 다계좌",
+        "name": "Large multi-account",
         "mode": "cyclic",
         "customer_ids": list(range(1, 501)),  # up to 500 IDs
         "shared_ips": ["203.0.113.50"],
     },
     "OP_MIX_A": {
-        "name": "혼합 A",
+        "name": "Mixed A",
         "mode": "cyclic",
         "customer_ids": list(range(501, 541)),
         "shared_ips": ["203.0.113.60"],
     },
     "OP_MIX_B": {
-        "name": "혼합 B",
+        "name": "Mixed B",
         "mode": "fixed",
         "customer_ids": [541],
         "shared_ips": [f"198.51.100.{i}" for i in range(40, 48)],

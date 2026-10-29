@@ -436,7 +436,7 @@ def _build_routes():
         routes.extend(_singleton(path, summary, "account", payload))
     token = {"accessToken": "test-token", "tokenType": "Bearer", "expiresIn": 3600}
     routes.extend(_singleton("/api/v1/auth/login", "로그인", "auth", token, methods=("POST",)))
-    routes.extend(_singleton("/api/v1/auth/token", "운영사/고객 JWT 발급", "auth", {
+    routes.extend(_singleton("/api/v1/auth/token", "계정 JWT 발급", "auth", {
         "accessToken": "<jwt>",
         "tokenType": "Bearer",
         "expiresIn": 86400,

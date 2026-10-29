@@ -1,7 +1,7 @@
 # XC PoC — Pet Shop BOLA lab
 
-F5 Distributed Cloud API Security의 BOLA/오탐 동작을 검토하기 위한 로컬·Docker 랩입니다.
-한국투자 Open API는 사용하지 않습니다. 대상은 Pet Shop뿐이며, **방어는 XC에서만** 수행합니다.
+F5 Distributed Cloud API Security의 BOLA 탐지·오탐 동작을 검토하기 위한 로컬·Docker 랩입니다.
+대상은 Pet Shop뿐이며, **방어는 XC에서만** 수행합니다.
 
 ## 구성
 
@@ -56,16 +56,16 @@ python3 run_bola.py --base http://192.168.47.81
 
 | scenario | expected | 의미 |
 |----------|----------|------|
-| `public_catalog` | benign | 공개 카탈로그(시세 조회 대응) |
+| `public_catalog` | benign | 공개 카탈로그 조회 |
 | `self_order` | benign | 본인 주문 |
-| `operator_cyclic` | benign | 순환형 운영사(264 ID), 공유 IP — IP 기준 오탐 후보 |
-| `operator_fixed` | benign | 고정 ID, IP만 변경 — IP 기준 오탐 후보 |
+| `operator_cyclic` | benign | 순환형 운영자(다수 ID), 공유 IP |
+| `operator_fixed` | benign | 고정 ID, 소스 IP만 변경 |
 | `daily_token_rotation` | benign | 일일 토큰 교체, `operator_code` 유지 |
-| `operator_large` | benign | 한 IP에서 다수 ID 순환 — IP 기준 오탐 후보 |
-| `cross_customer_bola` | bola | 배정되지 않은 타 고객 객체 |
+| `operator_large` | benign | 한 IP에서 다수 ID 순환 |
+| `cross_customer_bola` | bola | 배정되지 않은 타 계정 객체 |
 | `id_enumeration` | bola(대부분) | 연속 ID 열거 |
 
 ## 다음 단계
 
 XC Console에서 API Protection / Discovery로 이 트래픽을 통과시켜
-정상 운영사 패턴(오탐 후보)과 실제 BOLA를 어떻게 구분하는지 검토합니다.
+정상 멀티계정 패턴과 실제 BOLA를 어떻게 구분하는지 검토합니다.
