@@ -202,6 +202,10 @@
       cursor: pointer;
     }
     button.run:disabled { opacity: 0.5; cursor: wait; }
+    button.run.learn {
+      background: linear-gradient(180deg, #38bdf8, #0284c7);
+      box-shadow: 0 0 0 1px #0369a155;
+    }
     button.ghost {
       appearance: none;
       border: 1px solid var(--line);
@@ -212,7 +216,17 @@
       border-radius: 9px;
       cursor: pointer;
     }
-    .status { color: var(--muted); font-size: 0.88rem; }
+    button.ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+    .learn-bar {
+      margin: 0 0 10px;
+      padding: 10px 12px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      background: #0b1220;
+    }
+    .learn-field { margin: 0; }
+    .learn-field input { max-width: 120px; }
+    .status { color: var(--muted); font-size: 0.88rem; flex: 1 1 180px; }
     .detail h3 { margin: 0 0 6px; font-size: 1.15rem; }
     .detail .desc { color: var(--muted); margin: 0 0 12px; }
     .why {
@@ -400,9 +414,18 @@
           <p class="empty-opts" id="noScenarioOpts" hidden>이 시나리오는 추가 설정이 없습니다. 대상 서버만 맞으면 바로 실행하면 됩니다.</p>
         </div>
 
+        <div class="learn-bar">
+          <label class="field learn-field">
+            <strong>XC 학습 반복 (전체 시나리오)</strong>
+            <input id="learnRounds" type="number" min="1" max="500" value="100" />
+            <span class="opt-help">전체 시나리오 세트를 몇 번 돌릴지입니다. XC Discovery·BOLA baseline용 트래픽 양산. HTTP 상세 로그는 남기지 않습니다.</span>
+          </label>
+        </div>
         <div class="actions">
           <button type="button" class="run" id="runBtn">이 시나리오 실행</button>
           <button type="button" class="ghost" id="runAllBtn">전체 시나리오 실행</button>
+          <button type="button" class="run learn" id="learnBtn">학습 트래픽 생성</button>
+          <button type="button" class="ghost" id="stopLearnBtn" disabled>중지</button>
           <button type="button" class="ghost" id="pingBtn">대상 서버 연결 확인</button>
           <span class="status" id="status">시나리오를 선택하세요</span>
         </div>
@@ -685,6 +708,16 @@ Authorization: Bearer (410)
     let selectedId = "cross_customer_bola";
     let busy = false;
     let flowRender = 0;
+    /** XC 학습 반복: 상세 HTTP/JWT 로그를 쌓지 않고 카운트만 */
+    let learnQuiet = false;
+    let learnAbort = false;
+    let learnHttpCount = 0;
+    let learnOkCount = 0;
+    let learnFailCount = 0;
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
 
     function headersToObject(headers) {
       const out = {};
@@ -755,6 +788,12 @@ Authorization: Bearer (410)
     }
 
     function addExchange(payload) {
+      if (learnQuiet) {
+        learnHttpCount += 1;
+        if (payload.status >= 200 && payload.status < 400) learnOkCount += 1;
+        else learnFailCount += 1;
+        return null;
+      }
       httpLog.seq += 1;
       const entry = {
         seq: httpLog.seq,
@@ -1184,11 +1223,14 @@ Authorization: Bearer (410)
       URL.revokeObjectURL(a.href);
     }
 
-    function setBusy(v) {
+    function setBusy(v, { learning } = {}) {
       busy = v;
       document.getElementById("runBtn").disabled = v;
       document.getElementById("runAllBtn").disabled = v;
+      document.getElementById("learnBtn").disabled = v;
       document.getElementById("pingBtn").disabled = v;
+      document.getElementById("learnRounds").disabled = v;
+      document.getElementById("stopLearnBtn").disabled = !(v && learning);
     }
 
     async function runSelected(all) {
@@ -1219,6 +1261,63 @@ Authorization: Bearer (410)
       }
     }
 
+    async function runLearnTraffic() {
+      if (busy) return;
+      const rounds = clamp(Number(document.getElementById("learnRounds").value), 1, 500);
+      document.getElementById("learnRounds").value = String(rounds);
+      setBusy(true, { learning: true });
+      learnQuiet = true;
+      learnAbort = false;
+      learnHttpCount = 0;
+      learnOkCount = 0;
+      learnFailCount = 0;
+      const c = cfg();
+      document.getElementById("base").value = c.base;
+      const statusEl = document.getElementById("status");
+      const t0 = Date.now();
+      let finishedRounds = 0;
+      try {
+        statusEl.textContent = "학습 준비 · 대상 서버 확인…";
+        currentScenario = null;
+        const health = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
+        if (!health.ok) throw new Error("연결 실패 HTTP " + health.status + " — 대상 서버 주소를 확인하세요");
+        for (let r = 1; r <= rounds; r++) {
+          if (learnAbort) break;
+          const rows = [];
+          for (const id of ORDER) {
+            if (learnAbort) break;
+            statusEl.textContent =
+              "학습 " + r + "/" + rounds + " · " + scenarioTitle(id) +
+              " · HTTP " + learnHttpCount + " (ok " + learnOkCount + " / fail " + learnFailCount + ")";
+            await RUNNERS[id](c, rows);
+            await sleep(0);
+          }
+          if (!learnAbort) finishedRounds = r;
+          if (r % 5 === 0 || r === rounds) await sleep(0);
+        }
+        const sec = ((Date.now() - t0) / 1000).toFixed(1);
+        if (learnAbort) {
+          statusEl.textContent =
+            "학습 중지 · " + finishedRounds + "/" + rounds + "회 · HTTP " + learnHttpCount +
+            " (ok " + learnOkCount + " / fail " + learnFailCount + ") · " + sec + "s → " + c.base;
+        } else {
+          statusEl.textContent =
+            "학습 완료 · 전체 시나리오 ×" + finishedRounds + " · HTTP " + learnHttpCount +
+            " (ok " + learnOkCount + " / fail " + learnFailCount + ") · " + sec + "s → " + c.base;
+        }
+      } catch (err) {
+        statusEl.textContent =
+          "학습 실패 (" + finishedRounds + "/" + rounds + "): " +
+          (err && err.message ? err.message : err) +
+          " · HTTP " + learnHttpCount;
+      } finally {
+        learnQuiet = false;
+        learnAbort = false;
+        currentScenario = null;
+        setBusy(false);
+      }
+    }
+
     function mount() {
       const list = document.getElementById("scenarioList");
       let html = "";
@@ -1242,6 +1341,11 @@ Authorization: Bearer (410)
       });
       document.getElementById("runBtn").addEventListener("click", () => runSelected(false));
       document.getElementById("runAllBtn").addEventListener("click", () => runSelected(true));
+      document.getElementById("learnBtn").addEventListener("click", () => runLearnTraffic());
+      document.getElementById("stopLearnBtn").addEventListener("click", () => {
+        learnAbort = true;
+        document.getElementById("status").textContent = "중지 요청… 현재 시나리오 끝나면 멈춥니다";
+      });
       document.getElementById("pingBtn").addEventListener("click", async () => {
         const c = cfg();
         try {

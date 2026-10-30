@@ -590,6 +590,17 @@ def main():
         default=False,
         help="정상 API 모드: X-Enforce-Ownership=1 (남의 객체면 403)",
     )
+    parser.add_argument(
+        "--repeat",
+        type=int,
+        default=1,
+        help="선택한 시나리오(또는 전체)를 N회 반복 — XC Discovery/학습용 (기본 1)",
+    )
+    parser.add_argument(
+        "--quiet-http",
+        action="store_true",
+        help="반복 학습 시 HTTP 상세 JSONL을 쓰지 않음 (카운트만 summary에)",
+    )
     parser.add_argument("--out", type=Path, default=None, help="요약 JSONL 경로")
     args = parser.parse_args()
 
@@ -597,14 +608,16 @@ def main():
         print("\n".join(SCENARIOS))
         return
 
+    repeats = max(1, int(args.repeat))
     selected = args.scenario or list(SCENARIOS)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = int(time.time())
     out_path = args.out or (OUT_DIR / f"bola-run-{stamp}.jsonl")
     http_path = out_path.with_name(out_path.stem + ".http.jsonl")
 
+    quiet_http = bool(args.quiet_http or repeats > 1)
     session = requests.Session()
-    logger = ExchangeLogger()
+    logger = ExchangeLogger(quiet=quiet_http)
     ctx = Ctx(session, args.base, logger, enforce_ownership=args.enforce_ownership)
 
     health = session.get(f"{args.base.rstrip('/')}/health", timeout=5)
@@ -623,19 +636,27 @@ def main():
     )
 
     rows: list[dict] = []
-    for name in selected:
-        run_selected(ctx, rows, name, args, args.operator_code_enabled)
+    for round_i in range(1, repeats + 1):
+        if repeats > 1:
+            print(f"[learn] round {round_i}/{repeats}", flush=True)
+            rows = []
+        for name in selected:
+            run_selected(ctx, rows, name, args, args.operator_code_enabled)
 
     with out_path.open("w", encoding="utf-8") as fh:
         for row in rows:
             fh.write(json.dumps(row, ensure_ascii=False) + "\n")
-    logger.write_jsonl(http_path)
+    if quiet_http:
+        http_path = None
+    else:
+        logger.write_jsonl(http_path)
 
     summary = summarize(rows)
     summary["operator_code_enabled"] = args.operator_code_enabled
     summary["cyclic_ids"] = args.cyclic_ids
-    summary["http_exchanges"] = len(logger.entries)
-    summary["http_log"] = str(http_path)
+    summary["repeat"] = repeats
+    summary["http_exchanges"] = logger._seq
+    summary["http_log"] = str(http_path) if http_path else None
     summary_path = out_path.with_suffix(".summary.json")
     summary_path.write_text(json.dumps(summary, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(json.dumps({

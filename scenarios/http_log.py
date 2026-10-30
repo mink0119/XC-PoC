@@ -59,9 +59,11 @@ def _bearer_token(headers: dict | None) -> str | None:
 class ExchangeLogger:
     """Collects full HTTP exchanges for offline verification."""
 
-    def __init__(self):
+    def __init__(self, quiet: bool = False):
         self.entries: list[dict[str, Any]] = []
         self._seq = 0
+        # quiet: count only (XC learn / high --repeat) — do not retain bodies
+        self.quiet = quiet
 
     def clear(self):
         self.entries.clear()
@@ -82,6 +84,8 @@ class ExchangeLogger:
         meta: dict | None = None,
     ) -> int:
         self._seq += 1
+        if self.quiet:
+            return self._seq
         req_headers = dict(request_headers or {})
         entry = {
             "seq": self._seq,
