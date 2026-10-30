@@ -2182,16 +2182,6 @@ def post_api_v1_auth_token():
     from app import invoke
     return invoke("POST", "/api/v1/auth/token")
 
-@app.route("/api/v1/accounts/inquire", methods=["POST"])
-def post_api_v1_accounts_inquire():
-    from app import invoke
-    return invoke("POST", "/api/v1/accounts/inquire")
-
-@app.route("/api/v1/trading/order", methods=["POST"])
-def post_api_v1_trading_order():
-    from app import invoke
-    return invoke("POST", "/api/v1/trading/order")
-
 @app.route("/api/v1/auth/logout", methods=["POST"])
 def post_api_v1_auth_logout():
     from app import invoke
@@ -2346,6 +2336,16 @@ def get_static_swagger_ui_bundle_js():
 def get_static_lab_html():
     from app import invoke
     return invoke("GET", "/static/lab.html")
+
+@app.route("/api/v1/accounts/inquire", methods=["POST"])
+def post_api_v1_accounts_inquire():
+    from app import invoke
+    return invoke("POST", "/api/v1/accounts/inquire")
+
+@app.route("/api/v1/trading/order", methods=["POST"])
+def post_api_v1_trading_order():
+    from app import invoke
+    return invoke("POST", "/api/v1/trading/order")
 
 @app.route("/pet", methods=["GET"])
 def get_pet():

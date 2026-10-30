@@ -588,6 +588,127 @@ def _openapi():
         "put": {"tags": ["legacy"], "summary": "레거시 pet 수정", "operationId": "legacy_update_pet", "parameters": [{"name": "petId", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"200": {"description": "수정"}, "404": {"description": "없음"}}},
         "delete": {"tags": ["legacy"], "summary": "레거시 pet 삭제", "operationId": "legacy_delete_pet", "parameters": [{"name": "petId", "in": "path", "required": True, "schema": {"type": "integer"}}], "responses": {"204": {"description": "삭제"}, "404": {"description": "없음"}}},
     }
+    # Body private-resource APIs (P1b) — not in ROUTES table; registered via invoke handlers
+    paths["/api/v1/accounts/inquire"] = {
+        "post": {
+            "tags": ["account"],
+            "summary": "계좌 잔고 조회 (Body accountNo)",
+            "description": (
+                "Private resource 가 Path 가 아니라 JSON Body 의 accountNo 이다. "
+                "XC BOLA / private-resource 학습용. 기본은 소유권 미검사(200 유출)."
+            ),
+            "operationId": "post_api_v1_accounts_inquire",
+            "security": [{"bearerAuth": []}],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/AccountInquireRequest"},
+                        "example": {"accountNo": "10000001"},
+                    }
+                },
+            },
+            "responses": {
+                "200": {
+                    "description": "잔고 조회 성공",
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/AccountBalance"},
+                        }
+                    },
+                },
+                "400": {"description": "잘못된 요청"},
+                "401": {"description": "인증 필요 (ENFORCE_OWNERSHIP)"},
+                "403": {"description": "소유권 불일치 (ENFORCE_OWNERSHIP)"},
+                "404": {"description": "계좌 없음"},
+            },
+        }
+    }
+    paths["/api/v1/trading/order"] = {
+        "post": {
+            "tags": ["account"],
+            "summary": "거래 주문 (Body accountNo + tr_id)",
+            "description": "Body 의 accountNo 로 계좌를 지정하는 보조 API.",
+            "operationId": "post_api_v1_trading_order",
+            "security": [{"bearerAuth": []}],
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/TradingOrderRequest"},
+                        "example": {"accountNo": "10000001", "tr_id": "buy", "qty": 1},
+                    }
+                },
+            },
+            "responses": {
+                "200": {
+                    "description": "주문 접수",
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/TradingOrder"},
+                        }
+                    },
+                },
+                "400": {"description": "잘못된 요청"},
+                "401": {"description": "인증 필요 (ENFORCE_OWNERSHIP)"},
+                "403": {"description": "소유권 불일치 (ENFORCE_OWNERSHIP)"},
+                "404": {"description": "계좌 없음"},
+            },
+        }
+    }
+    # Override thin ROUTES stub with real JWT issuance schema (identity signal for XC)
+    paths["/api/v1/auth/token"] = {
+        "post": {
+            "tags": ["auth"],
+            "summary": "계정 JWT 발급 (24h access token)",
+            "description": (
+                "customer_id 를 JWT subject/claim 으로 넣는다. "
+                "선택적 operator_code 는 다중 계정 운용(P2) 비교용."
+            ),
+            "operationId": "post_api_v1_auth_token",
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/AuthTokenRequest"},
+                        "examples": {
+                            "customer": {"value": {"customer_id": 410}},
+                            "withOperator": {
+                                "value": {"customer_id": 410, "operator_code": "OP-DESK-1"}
+                            },
+                        },
+                    }
+                },
+            },
+            "responses": {
+                "200": {
+                    "description": "토큰 발급",
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/AuthTokenResponse"},
+                        }
+                    },
+                },
+                "400": {"description": "잘못된 요청"},
+            },
+        }
+    }
+    # Path-level private objects used by P1a / P1c / P3
+    for private_path in (
+        "/api/v1/orders/{id}",
+        "/api/v1/payments/{id}",
+        "/api/v1/customers/{id}",
+        "/api/v1/pets/{id}",
+        "/api/v1/pets/{id}/medical-records",
+    ):
+        op = paths.get(private_path, {}).get("get")
+        if op:
+            op["security"] = [{"bearerAuth": []}]
+            op["description"] = (
+                (op.get("description") or "")
+                + " Private object (path id). Default: no ownership check (XC BOLA PoC)."
+            ).strip()
+
     return {
         "openapi": "3.0.3",
         "info": {
@@ -595,9 +716,11 @@ def _openapi():
             "description": (
                 "스토어프론트, 주문, 계정 API. "
                 "POST /api/v1/auth/token 은 24h access token(JWT)을 발급한다. "
-                "비공개 객체 조회는 소유권을 검사하지 않는다."
+                "POST /api/v1/accounts/inquire · POST /api/v1/trading/order 는 Body accountNo 로 private resource 를 조회/거래한다. "
+                "Path private objects: /orders/{id}, /payments/{id}, /customers/{id}, /pets/{id}. "
+                "기본은 소유권을 검사하지 않는다(ENFORCE_OWNERSHIP / X-Enforce-Ownership 으로 검사 가능)."
             ),
-            "version": "1.4.0",
+            "version": "1.5.0",
         },
         "components": {
             "securitySchemes": {
@@ -606,7 +729,91 @@ def _openapi():
                     "scheme": "bearer",
                     "bearerFormat": "JWT",
                 }
-            }
+            },
+            "schemas": {
+                "AuthTokenRequest": {
+                    "type": "object",
+                    "required": ["customer_id"],
+                    "properties": {
+                        "customer_id": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "JWT 에 넣을 고객 ID (identity)",
+                            "example": 410,
+                        },
+                        "operator_code": {
+                            "type": "string",
+                            "description": "선택. 다중 계정 운용자 표시 (P2)",
+                            "example": "OP-DESK-1",
+                        },
+                        "issued_at": {
+                            "type": "integer",
+                            "description": "선택. epoch 초 (토큰 재발급 시나리오)",
+                        },
+                    },
+                    "additionalProperties": False,
+                },
+                "AuthTokenResponse": {
+                    "type": "object",
+                    "properties": {
+                        "accessToken": {"type": "string"},
+                        "tokenType": {"type": "string", "example": "Bearer"},
+                        "expiresIn": {"type": "integer", "example": 86400},
+                    },
+                },
+                "AccountInquireRequest": {
+                    "type": "object",
+                    "required": ["accountNo"],
+                    "properties": {
+                        "accountNo": {
+                            "type": "string",
+                            "description": "Private resource — 계좌번호 (예: 10000001 = customer 1)",
+                            "example": "10000001",
+                            "minLength": 1,
+                        }
+                    },
+                    "additionalProperties": False,
+                },
+                "AccountBalance": {
+                    "type": "object",
+                    "properties": {
+                        "accountNo": {"type": "string", "example": "10000001"},
+                        "customerId": {"type": "integer"},
+                        "currency": {"type": "string", "example": "USD"},
+                        "available": {"type": "number"},
+                        "held": {"type": "number"},
+                        "phone": {"type": "string", "description": "PII-like field for discovery demos"},
+                        "updatedAt": {"type": "string", "format": "date-time"},
+                    },
+                },
+                "TradingOrderRequest": {
+                    "type": "object",
+                    "required": ["accountNo", "tr_id"],
+                    "properties": {
+                        "accountNo": {
+                            "type": "string",
+                            "description": "Private resource — 계좌번호",
+                            "example": "10000001",
+                        },
+                        "tr_id": {"type": "string", "example": "buy"},
+                        "trId": {"type": "string", "description": "tr_id 별칭"},
+                        "qty": {"type": "integer", "minimum": 1, "default": 1},
+                    },
+                },
+                "TradingOrder": {
+                    "type": "object",
+                    "properties": {
+                        "orderId": {"type": "string"},
+                        "accountNo": {"type": "string"},
+                        "customerId": {"type": "integer"},
+                        "trId": {"type": "string"},
+                        "side": {"type": "string", "enum": ["buy", "sell"]},
+                        "qty": {"type": "integer"},
+                        "status": {"type": "string"},
+                        "createdAt": {"type": "string", "format": "date-time"},
+                    },
+                },
+            },
         },
         "servers": [{"url": "/", "description": "이 문서를 연 호스트의 포트 80"}],
         "tags": [
@@ -615,7 +822,7 @@ def _openapi():
             {"name": "catalog", "description": "상품 카탈로그"},
             {"name": "pets", "description": "반려동물"},
             {"name": "customers", "description": "고객"},
-            {"name": "account", "description": "로그인 사용자"},
+            {"name": "account", "description": "로그인 사용자 · Body accountNo 계좌"},
             {"name": "auth", "description": "인증"},
             {"name": "checkout", "description": "장바구니, 주문, 결제"},
             {"name": "stores", "description": "매장과 예약"},
