@@ -114,6 +114,16 @@
     }
     .scenario-list .name-text { flex: 1 1 120px; }
     .scenario-list .meta { color: var(--muted); font-size: 0.75rem; margin-top: 4px; display: block; }
+    .group-label {
+      margin: 12px 0 4px;
+      padding: 0 2px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--accent);
+    }
+    .group-label:first-child { margin-top: 0; }
     .tag {
       display: inline-block;
       padding: 1px 7px;
@@ -230,11 +240,18 @@
       min-height: 120px;
     }
     .box h4 {
-      margin: 0 0 8px;
-      font-size: 0.75rem;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
+      margin: 0 0 4px;
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      color: var(--ink);
+      text-transform: none;
+    }
+    .box .box-sub {
+      margin: 0 0 10px;
+      font-size: 0.78rem;
       color: var(--muted);
+      line-height: 1.4;
     }
     .mermaid {
       background: #0b1220;
@@ -270,35 +287,53 @@
     .scroll.tall { max-height: 420px; }
     code { font-family: var(--mono); font-size: 0.86em; color: #a5f3fc; }
     details summary { cursor: pointer; color: var(--accent); font-size: 0.8rem; }
-    .ex-body {
-      margin: 4px 0 0;
-      max-height: 110px;
-      overflow: auto;
+    .ex-panel {
+      margin: 6px 0 0;
       background: #0b1220;
       border: 1px solid var(--line);
-      border-radius: 6px;
-      padding: 6px 8px;
+      border-radius: 8px;
+      padding: 8px 10px;
+    }
+    .ex-panel .ex-heading {
+      margin: 0 0 6px;
+      font-size: 0.8rem;
+      font-weight: 700;
+      color: var(--ink);
+    }
+    .ex-panel .ex-heading-sub {
+      margin: 0 0 8px;
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .ex-body {
+      margin: 0;
+      max-height: 140px;
+      overflow: auto;
       white-space: pre-wrap;
       word-break: break-word;
       font-family: var(--mono);
       font-size: 0.72rem;
+      color: #cbd5e1;
     }
   </style>
 </head>
 <body>
   <header>
-    <div class="badge">로컬 PC에서 실행 · Pet Shop은 대상 서버</div>
-    <h1>BOLA 시나리오 실행기</h1>
+    <div class="badge">로컬 트래픽 생성기 · 탐지는 F5 XC · 방어는 앱이 아님</div>
+    <h1>BOLA / 이상행위 시나리오 실행기</h1>
     <p class="lead">
-      왼쪽에서 시나리오를 고르면, <strong>그 시나리오에 필요한 설정만</strong> 보입니다.
-      실행하면 이 PC 브라우저가 대상 API(<code>Target</code>)로 요청을 보냅니다.
+      목표는 “탐지 화면 한 장”이 아니라 <strong>정상 다중 ID·IP 패턴 vs 비정상 객체 접근</strong>을 구분할 수 있는지 검증하는 트래픽을 만드는 것입니다.
+      시나리오는 <strong>P1 객체 BOLA</strong> / <strong>P2 오탐·식별</strong> / <strong>P3 이상행위</strong>로 나뉩니다. 선택한 시나리오 옵션만 표시됩니다.
+      BOLA는 XC 학습 기간이 필요할 수 있어, 실행 직후 이벤트가 없다고 미지원으로 단정하지 마세요.
+      상세 방향: <code>docs/PRD.md</code>
     </p>
   </header>
 
   <div class="layout">
     <aside class="panel">
-      <h2>시나리오</h2>
-      <p class="side-hint">무엇을 보내볼지 고르세요. 설정은 선택한 항목에만 맞춰 바뀝니다.</p>
+      <h2>시나리오 (PRD 그룹)</h2>
+      <p class="side-hint">P1=권한 없는 객체 접근 · P2=정상인데 오탐 나기 쉬운 패턴 · P3=정상 후 급격한 이상 탐색</p>
       <div class="scenario-list" id="scenarioList"></div>
     </aside>
 
@@ -310,6 +345,19 @@
             <strong>대상 서버 주소 (Pet Shop)</strong>
             <input id="base" type="text" value="http://192.168.47.81" />
             <span class="opt-help">공격 UI 주소가 아닙니다. 트래픽을 보낼 Pet Shop URL입니다. 예: http://192.168.47.81</span>
+          </label>
+        </div>
+        <div class="toggle-block">
+          <label class="toggle">
+            <input id="enforceOwnership" type="checkbox" />
+            <span>
+              <strong>대상 서버 소유권 검사 (정상 API 모드)</strong>
+              <span class="opt-help" style="display:block;margin-top:4px">
+                <b>끄기(기본)</b> — 소유권 미검사 → 남의 주문도 HTTP 200 (취약, XC BOLA PoC용).<br />
+                <b>켜기</b> — 정상 API처럼 JWT의 <code>customer_id</code> 와 객체 소유자(인메모리 저장소)를 비교. 남이면 <code>403</code>.
+                요청 헤더 <code>X-Enforce-Ownership: 1</code> 로 전달합니다.
+              </span>
+            </span>
           </label>
         </div>
 
@@ -366,13 +414,15 @@
         <p class="why" id="whyBox" hidden></p>
         <div class="split">
           <div class="box">
-            <h4>흐름</h4>
+            <h4 id="flowTitle">요청 흐름도</h4>
+            <p class="box-sub" id="flowSub">이 시나리오가 대상 서버로 어떤 순서로 요청을 보내는지만 그림으로 보여 줍니다.</p>
             <div class="mermaid" id="flowChart">flowchart LR
               A[시나리오 선택] --> B[로컬에서 실행]
             </div>
           </div>
           <div class="box">
-            <h4>예시 (이렇게 동작합니다)</h4>
+            <h4 id="exampleTitle">요청 예시</h4>
+            <p class="box-sub" id="exampleSub">실제로 나가는 HTTP 호출을 텍스트로 적어 둔 샘플입니다. 실행 결과 표가 아닙니다.</p>
             <pre class="example" id="exampleBox">왼쪽에서 시나리오를 고르면 예시가 나옵니다.</pre>
           </div>
         </div>
@@ -405,7 +455,13 @@
         <div class="scroll tall">
           <table>
             <thead>
-              <tr><th>순번</th><th>시나리오</th><th>기대</th><th>요청</th><th>응답</th></tr>
+              <tr>
+                <th>순번</th>
+                <th>시나리오</th>
+                <th>기대</th>
+                <th>보낸 요청 (Request)</th>
+                <th>받은 응답 (Response)</th>
+              </tr>
             </thead>
             <tbody id="httpRows"></tbody>
           </table>
@@ -443,137 +499,135 @@
       return `<span class="tag ${expected}">${EXPECTED_LABEL[expected] || expected}</span>`;
     }
 
-    // options: which inputs this scenario uses (besides always-visible target URL)
+    // group: baseline | P1 | P2 | P3  (see docs/PRD.md)
+    // options: inputs this scenario uses (besides always-visible target URL)
+    function accountNoFor(customerId) {
+      return String(10000000 + customerId);
+    }
+
     const SCENARIO_META = {
       public_catalog: {
+        group: "baseline", groupLabel: "기본 · 베이스라인",
         title: "정상 · 공개 상품 보기",
         short: "로그인 없이 공개 API만",
-        expected: "benign",
-        options: [],
+        expected: "benign", options: [],
         desc: "상품·카테고리처럼 누구나 볼 수 있는 API만 호출합니다.",
-        why: "XC에 “정상 공개 트래픽” 기준선을 남길 때 씁니다. 설정할 값이 없습니다.",
+        why: "XC에 정상 공개 트래픽 기준선을 남길 때 씁니다.",
         flow: `flowchart LR
           L[이 PC] -->|공개 GET| T[Pet Shop]
           T -->|200| L
           L --> R[기대: 정상]`,
-        example: `GET /api/v1/products
-GET /api/v1/categories
-…
-→ HTTP 200, 기대=정상
-(토큰 없음)`,
+        example: `GET /api/v1/products … → 정상 200 (토큰 없음)`,
       },
       self_order: {
+        group: "baseline", groupLabel: "기본 · 베이스라인",
         title: "정상 · 내 주문 보기",
         short: "자기 계정 주문만 조회",
-        expected: "benign",
-        options: [],
-        desc: "로그인(토큰) 후, 본인 주문만 조회합니다.",
-        why: "정상적인 로그인 사용자 패턴입니다. 추가 설정 없이 실행하면 됩니다.",
+        expected: "benign", options: [],
+        desc: "로그인 후 본인 주문만 조회합니다.",
+        why: "정상 로그인 사용자 베이스라인입니다.",
         flow: `flowchart TD
-          L[이 PC] -->|토큰 발급 계정 410| T[Pet Shop]
+          L[이 PC] -->|토큰 410| T[Pet Shop]
           L -->|내 주문 GET| T
           T -->|200| L
           L --> R[기대: 정상]`,
-        example: `토큰: customer_id=410
-GET /api/v1/orders/(410의 주문)
-→ 내 것 → 정상, HTTP 200`,
-      },
-      operator_cyclic: {
-        title: "오탐 검토 · 여러 계정 돌아가며 조회",
-        short: "운영자가 여러 고객 대신 조회하는 패턴",
-        expected: "benign",
-        options: ["cyclicIds", "cyclicSample", "operatorCode"],
-        desc: "여러 고객 계정을 번갈아 쓰되, 각 계정의 “자기 주문”만 봅니다. 공격이 아니라 정상 대행 조회에 가깝습니다.",
-        why: "같은 IP에서 계정이 많이 바뀌면 XC가 BOLA로 오인할 수 있습니다. 운영자 표시(ON/OFF)를 바꿔 가며 비교하세요.",
-        flow: `flowchart TD
-          L[이 PC] --> A[계정1 토큰 → 주문1]
-          A --> B[계정2 토큰 → 주문2]
-          B --> C[계정N …]
-          C --> R[각 요청 기대: 정상]`,
-        example: `계정 3개, 조회 3번, 운영자 표시 OFF
-계정1 → 주문1  (IP …10)
-계정2 → 주문3  (IP …11)
-계정3 → 주문5  (IP …10)
-→ 모두 자기 주문 = 정상
-단, XC에는 “다계정+공유 IP”로 오탐 후보`,
-      },
-      operator_fixed: {
-        title: "오탐 검토 · 같은 계정, IP만 바꿈",
-        short: "계정 고정 + 출발 IP만 변경",
-        expected: "benign",
-        options: ["fixedSample", "operatorCode"],
-        desc: "계정은 하나로 고정하고, 요청에 붙는 출발 IP만 바꿉니다.",
-        why: "프록시·NAT처럼 IP가 자주 바뀌는 정상 패턴이 XC에 이상으로 잡히는지 볼 때 씁니다.",
-        flow: `flowchart LR
-          L[이 PC] --> T[같은 계정 토큰]
-          T --> A[조회 IP1]
-          T --> B[조회 IP2]
-          T --> C[조회 IPn]
-          C --> R[기대: 정상]`,
-        example: `계정 405 고정
-같은 주문 조회 + IP …1
-같은 주문 조회 + IP …2
-…
-→ 자기 주문 = 정상`,
-      },
-      access_token_reissue: {
-        title: "정상 · 하루마다 토큰 새로 받기",
-        short: "24시간마다 access_token 재발급",
-        expected: "benign",
-        options: ["operatorCode"],
-        desc: "OAuth처럼 하루에 한 번 access_token을 다시 발급받고(내용은 iat/exp만 다름), 그 토큰으로 자기 주문을 봅니다.",
-        why: "토큰 문자열이 날짜마다 달라지는지 확인하고, 재발급 패턴이 XC에 이상해 보이지 않는지 봅니다.",
-        flow: `flowchart TD
-          L[이 PC] --> D0[day0 토큰]
-          D0 --> G0[내 주문]
-          G0 --> D1[day1 토큰]
-          D1 --> G1[내 주문]
-          G1 --> D2[day2 토큰]
-          D2 --> R[토큰 3개 서로 다름 · 정상]`,
-        example: `day0 / day0+24h / day0+48h 토큰 발급
-→ 문자열 3개가 모두 달라야 함
-각 토큰으로 내 주문 GET → 정상`,
+        example: `토큰 customer_id=410 → GET 내 주문 → 정상`,
       },
       cross_customer_bola: {
-        title: "공격 · 남의 주문·결제 조회",
-        short: "내 토큰으로 다른 사람 데이터 보기 (BOLA)",
-        expected: "bola",
-        options: [],
-        desc: "내 계정 토큰으로 다른 사람의 주문, 결제, 프로필, 진료기록을 요청합니다.",
-        why: "Pet Shop은 소유권을 안 막아서 200이 나옵니다. XC가 BOLA로 잡는지 보는 핵심 공격 시나리오입니다. 추가 설정 없음.",
+        group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
+        title: "P1a · Path로 남의 데이터 조회",
+        short: "URL 경로의 주문/결제 ID 교차 접근",
+        expected: "bola", options: [],
+        desc: "내 토큰으로 다른 사람 주문·결제·프로필·진료기록을 Path로 요청합니다.",
+        why: "고전적 BOLA. 소유권 검사 OFF면 200 유출(XC 관찰용), ON이면 서버가 403으로 막음(정상 API). XC 학습 시간이 필요할 수 있습니다.",
         flow: `flowchart TD
-          L[이 PC 공격자] -->|내 토큰 410| T[Pet Shop]
-          L -->|남의 주문1| T
-          L -->|남의 결제1| T
-          L -->|남의 프로필| T
+          L[공격자 토큰 410] --> T[Pet Shop]
+          L -->|GET 남의 주문/결제| T
           T -->|200 유출| L
           L --> R[기대: BOLA]`,
-        example: `토큰: 내 계정 410
-GET /orders/1     → 남(1)의 것 → BOLA 200
-GET /payments/1   → BOLA 200
-GET /customers/1  → BOLA 200
-GET /pets/1/medical-records → BOLA 200`,
+        example: `GET /orders/1, /payments/1, /customers/1 → BOLA 200`,
+      },
+      account_body_bola: {
+        group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
+        title: "P1b · Body 계좌번호로 조회",
+        short: "accountNo 가 JSON Body에 있는 Private Resource",
+        expected: "bola", options: [],
+        desc: "경로가 아니라 요청 Body의 accountNo 로 잔고를 조회합니다. (실환경 계좌번호 Body 필드와 같은 형태)",
+        why: "XC가 Path뿐 아니라 Body Private Resource를 사용자와 묶어 BOLA로 보는지가 PoC 핵심 쟁점입니다.",
+        flow: `flowchart TD
+          L[토큰 410] -->|POST /accounts/inquire| T[Pet Shop]
+          L -->|Body accountNo=본인| T
+          L -->|Body accountNo=타인| T
+          T -->|200| L
+          L --> R[타인 → BOLA]`,
+        example: `POST /api/v1/accounts/inquire
+{ "accountNo": "10000001" }  ← 타인
+Authorization: Bearer (410)
+→ Body 객체 교차 접근 = BOLA`,
       },
       id_enumeration: {
-        title: "공격 · 주문번호 연속 조회",
-        short: "주문 ID를 1,2,3… 으로 올려 보기 (BOLA)",
-        expected: "bola",
-        options: ["enumCount"],
-        desc: "내 토큰으로 주문 ID를 1부터 올려 가며 연속 조회합니다.",
-        why: "객체 ID를 추측·열거하는 BOLA 패턴입니다. “몇 개까지”만 정하면 됩니다.",
+        group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
+        title: "P1c · 주문번호 연속 조회",
+        short: "ID를 1,2,3… 으로 올려 보기",
+        expected: "bola", options: ["enumCount"],
+        desc: "주문 ID를 연속 증가시키며 열거합니다.",
+        why: "객체 ID 추측·열거형 BOLA입니다.",
         flow: `flowchart LR
-          L[이 PC] --> T[내 토큰]
-          T --> A[주문1]
-          A --> B[주문2]
-          B --> C[주문N]
-          C --> R[남의 것이면 BOLA]`,
-        example: `토큰: 계정 410
-GET /orders/1 → 남 → BOLA
-GET /orders/2 → 남 → BOLA
-GET /orders/3 → 남 → BOLA
-… (설정한 개수만큼)`,
+          L[토큰] --> A[주문1] --> B[주문2] --> C[주문N]
+          C --> R[BOLA]`,
+        example: `GET /orders/1 … N → 남의 것이면 BOLA`,
+      },
+      operator_cyclic: {
+        group: "P2", groupLabel: "P2 · 오탐·식별 (정상인데 헷갈리기 쉬움)",
+        title: "P2a · 여러 계정 돌아가며 조회",
+        short: "다계정 순환 · 각 계정은 자기 주문만",
+        expected: "benign", options: ["cyclicIds", "cyclicSample", "operatorCode"],
+        desc: "여러 계정을 번갈아 쓰되 각 계정의 자기 주문만 봅니다. IP 변경≠BOLA.",
+        why: "운영 대행의 정상 패턴이 XC에 공격으로 오인되는지(오탐) 검토합니다. 운영자 표시 ON/OFF 비교.",
+        flow: `flowchart TD
+          A[계정1→주문1] --> B[계정2→주문2] --> C[계정N]
+          C --> R[각 요청 정상]`,
+        example: `다계정+공유 IP, 자기 주문만 → 라벨 정상 / XC 오탐 후보`,
+      },
+      operator_fixed: {
+        group: "P2", groupLabel: "P2 · 오탐·식별 (정상인데 헷갈리기 쉬움)",
+        title: "P2b · 같은 계정, IP만 바꿈",
+        short: "계정 고정 + 출발 IP 변경",
+        expected: "benign", options: ["fixedSample", "operatorCode"],
+        desc: "계정은 고정, X-Forwarded-For 만 바꿉니다.",
+        why: "IP 변경 자체를 공격으로 보면 안 됩니다. 식별·오탐 이슈입니다.",
+        flow: `flowchart LR
+          T[같은 토큰] --> A[IP1] --> B[IP2] --> C[IPn]
+          C --> R[정상]`,
+        example: `동일 계정 · 다른 IP → 정상`,
+      },
+      access_token_reissue: {
+        group: "P2", groupLabel: "P2 · 오탐·식별 (정상인데 헷갈리기 쉬움)",
+        title: "P2c · 하루마다 토큰 새로 받기",
+        short: "24h access_token 재발급",
+        expected: "benign", options: ["operatorCode"],
+        desc: "iat/exp만 바꾼 토큰을 날짜마다 발급해 자기 주문을 봅니다.",
+        why: "토큰 문자열만으로 매일 다른 사용자로 오인하지 않는지 확인합니다.",
+        flow: `flowchart TD
+          D0[day0 토큰] --> D1[day1] --> D2[day2]
+          D2 --> R[3개 문자열 다름 · 정상]`,
+        example: `일자별 토큰 3개 → 모두 자기 주문 · 정상`,
+      },
+      abnormal_probe: {
+        group: "P3", groupLabel: "P3 · 이상행위 (정상 후 급변)",
+        title: "P3a · 정상 조회 후 타인 급탐색",
+        short: "자기 주문 몇 건 → 갑자기 타인 주문 연속",
+        expected: "bola", options: [],
+        desc: "잠시 정상(자기 주문) 뒤에, 같은 토큰으로 타인 주문을 연속 조회합니다.",
+        why: "단순 호출량보다 “행위 전환”을 XC가 구분하는지 봅니다. P2 순환과 대조하세요.",
+        flow: `flowchart TD
+          N[자기 주문 정상] --> X[타인 주문 1..5]
+          X --> R[후반은 BOLA]`,
+        example: `GET 내 주문 ×2 → GET 남의 주문 ×5 → 후반 BOLA`,
       },
     };
+
+    const GROUP_ORDER = ["P1", "P2", "P3", "baseline"];
 
     const RUNNERS = {};
 
@@ -585,7 +639,15 @@ GET /orders/3 → 남 → BOLA
         fixedSample: clamp(Number(document.getElementById("fixedSample").value), 1, 50),
         enumCount: clamp(Number(document.getElementById("enumCount").value), 1, 100),
         operatorCodeEnabled: document.getElementById("operatorCode").checked,
+        enforceOwnership: document.getElementById("enforceOwnership").checked,
       };
+    }
+
+    function authHeaders(extra) {
+      const h = Object.assign({}, extra || {});
+      if (cfg().enforceOwnership) h["X-Enforce-Ownership"] = "1";
+      else h["X-Enforce-Ownership"] = "0";
+      return h;
     }
 
     const httpLog = { seq: 0, entries: [] };
@@ -634,7 +696,7 @@ GET /orders/3 → 남 → BOLA
     }
 
     async function loggedFetch(method, url, { headers, body, expected, meta, scenario } = {}) {
-      const reqHeaders = headers ? { ...headers } : {};
+      const reqHeaders = authHeaders(headers ? { ...headers } : {});
       const init = { method, headers: reqHeaders };
       let requestBody = null;
       if (body != null) {
@@ -786,7 +848,57 @@ GET /orders/3 → 남 → BOLA
       }
     };
 
-    const ORDER = Object.keys(SCENARIO_META);
+    RUNNERS.account_body_bola = async function (c, rows) {
+      currentScenario = "account_body_bola";
+      const attacker = 410;
+      const token = await issueToken(c.base, attacker, null);
+      const path = "/api/v1/accounts/inquire";
+      const targets = [
+        [accountNoFor(attacker), attacker],
+        [accountNoFor(1), 1],
+        [accountNoFor(2), 2],
+      ];
+      for (const [accountNo, owner] of targets) {
+        const expected = expectedLabel(attacker, null, owner);
+        const { status } = await loggedFetch("POST", c.base + path, {
+          headers: {
+            Authorization: "Bearer " + token,
+            "Content-Type": "application/json",
+            "X-Forwarded-For": "192.0.2.99",
+            "X-Real-IP": "192.0.2.99",
+          },
+          body: { accountNo },
+          expected,
+          meta: { kind: "account_body", accountNo },
+        });
+        push(rows, { scenario: "account_body_bola", expected, status, source_ip: "192.0.2.99", customer_id: attacker, operator_code: null, path: path + " accountNo=" + accountNo });
+      }
+    };
+
+    RUNNERS.abnormal_probe = async function (c, rows) {
+      currentScenario = "abnormal_probe";
+      const customerId = 410;
+      const token = await issueToken(c.base, customerId, null);
+      for (const slot of [0, 1]) {
+        const orderId = orderIdFor(customerId, slot);
+        const path = "/api/v1/orders/" + orderId;
+        const expected = expectedLabel(customerId, null, customerId);
+        const { status } = await getPrivate(c.base, token, path, "192.0.2.60", expected);
+        push(rows, { scenario: "abnormal_probe", expected, status, source_ip: "192.0.2.60", customer_id: customerId, operator_code: null, path });
+      }
+      for (let cid = 1; cid <= 5; cid++) {
+        const orderId = orderIdFor(cid);
+        const owner = customerIdForOrder(orderId);
+        const path = "/api/v1/orders/" + orderId;
+        const expected = expectedLabel(customerId, null, owner);
+        const { status } = await getPrivate(c.base, token, path, "192.0.2.60", expected);
+        push(rows, { scenario: "abnormal_probe", expected, status, source_ip: "192.0.2.60", customer_id: customerId, operator_code: null, path });
+      }
+    };
+
+    const ORDER = GROUP_ORDER.flatMap((g) =>
+      Object.keys(SCENARIO_META).filter((id) => SCENARIO_META[id].group === g)
+    );
 
     async function renderFlow(text) {
       const el = document.getElementById("flowChart");
@@ -828,6 +940,8 @@ GET /orders/3 → 남 → BOLA
       const why = document.getElementById("whyBox");
       why.hidden = !meta.why;
       why.textContent = meta.why ? "왜 쓰나: " + meta.why : "";
+      document.getElementById("flowTitle").textContent = "요청 흐름도 · " + meta.title;
+      document.getElementById("exampleTitle").textContent = "요청 예시 · " + meta.title;
       document.getElementById("exampleBox").textContent = meta.example;
       syncOptions(id);
       renderFlow(meta.flow);
@@ -885,14 +999,24 @@ GET /orders/3 → 남 → BOLA
           <td>${e.expected ? expectedTag(e.expected) : "—"}</td>
           <td>
             <div><code>${e.request.method} ${e.request.url}</code></div>
-            <details><summary>요청 상세</summary>
-              <pre class="ex-body">${escapeHtml(preview({ headers: e.request.headers, body: e.request.body }))}</pre>
+            <details open>
+              <summary>요청 내용 펼치기</summary>
+              <div class="ex-panel">
+                <p class="ex-heading">요청 헤더 · 본문</p>
+                <p class="ex-heading-sub">이 PC가 대상 서버로 보낸 HTTP 요청의 headers / body 입니다.</p>
+                <pre class="ex-body">${escapeHtml(preview({ headers: e.request.headers, body: e.request.body }))}</pre>
+              </div>
             </details>
           </td>
           <td>
-            <div><strong>${e.response.status}</strong></div>
-            <details><summary>응답 상세</summary>
-              <pre class="ex-body">${escapeHtml(preview({ headers: e.response.headers, body: e.response.body }))}</pre>
+            <div><strong>HTTP ${e.response.status}</strong></div>
+            <details open>
+              <summary>응답 내용 펼치기</summary>
+              <div class="ex-panel">
+                <p class="ex-heading">응답 헤더 · 본문</p>
+                <p class="ex-heading-sub">대상 서버가 돌려준 HTTP 응답의 headers / body 입니다.</p>
+                <pre class="ex-body">${escapeHtml(preview({ headers: e.response.headers, body: e.response.body }))}</pre>
+              </div>
             </details>
           </td>
         </tr>`).join("");
@@ -945,13 +1069,20 @@ GET /orders/3 → 남 → BOLA
 
     function mount() {
       const list = document.getElementById("scenarioList");
-      list.innerHTML = ORDER.map((id) => {
+      let html = "";
+      let lastGroup = null;
+      for (const id of ORDER) {
         const m = SCENARIO_META[id];
-        return `<button type="button" data-id="${id}">
+        if (m.group !== lastGroup) {
+          lastGroup = m.group;
+          html += `<div class="group-label">${m.groupLabel}</div>`;
+        }
+        html += `<button type="button" data-id="${id}">
           <span class="name">${expectedTag(m.expected)}<span class="name-text">${m.title}</span></span>
           <span class="meta">${m.short}</span>
         </button>`;
-      }).join("");
+      }
+      list.innerHTML = html;
       list.addEventListener("click", (ev) => {
         const btn = ev.target.closest("button[data-id]");
         if (!btn) return;

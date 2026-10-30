@@ -1,7 +1,9 @@
 # XC PoC — Pet Shop BOLA lab
 
-F5 Distributed Cloud API Security의 BOLA 탐지·오탐 검토용 랩입니다.
+F5 Distributed Cloud API Security의 BOLA·이상행위·오탐 검토용 **트래픽 생성 랩**입니다.
 **방어는 XC에서만** 합니다. Pet Shop은 취약(소유권 미검사)합니다.
+
+방향·범위·시나리오 그룹(P1/P2/P3)은 **[docs/PRD.md](docs/PRD.md)** 가 기준입니다. 기능 추가 전 PRD를 먼저 맞춥니다.
 
 ## 역할 분리
 
@@ -148,11 +150,20 @@ python3 run_bola.py --base http://192.168.47.81 \
 
 | 경로 | 역할 |
 |------|------|
+| `docs/PRD.md` | **제품 방향·범위·P1/P2/P3 (기준)** |
 | `petshop/` | 취약 대상 API |
-| `scenarios/lab/` | 공격 GUI 정적 파일 |
+| `scenarios/lab/` | 로컬 공격 GUI |
 | `scenarios/serve_lab.py` | 로컬 GUI 서버 (`127.0.0.1:8765`) |
-| `scenarios/run_bola.py` | CLI 러너 |
-| `docs/SCENARIOS.md` | 시나리오·플로우 상세 |
+| `scenarios/run_bola.py` | CLI 러너 (선택) |
+| `docs/SCENARIOS.md` | 시나리오 상세 |
+
+### 시나리오 그룹
+
+| 그룹 | 무엇을 보나 |
+|------|-------------|
+| **P1** | 권한 없는 객체 접근 (Path / Body `accountNo` / ID 열거) |
+| **P2** | 정상 다계정·IP·토큰을 공격으로 오인하지 않는지 |
+| **P3** | 정상 조회 뒤 타인 급탐색 등 행위 전환 |
 
 ## operator_code / 순환형
 
@@ -161,7 +172,7 @@ python3 run_bola.py --base http://192.168.47.81 \
 | OFF (기본) | 운영자 claim 없음 | IP 다계정 **오탐** 후보 |
 | ON | `operator_code` 포함 | 운영자 신원 구분 여부 |
 
-`operator_cyclic` + 순환 ID 개수(1–500). 상세는 [docs/SCENARIOS.md](docs/SCENARIOS.md).
+`operator_cyclic` + 순환 ID 개수(1–500). 상세는 [docs/PRD.md](docs/PRD.md), [docs/SCENARIOS.md](docs/SCENARIOS.md).
 
 ## 공식 문서
 

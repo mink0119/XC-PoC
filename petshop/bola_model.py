@@ -191,10 +191,12 @@ def customer_record(customer_id: int) -> dict[str, Any]:
 
 
 def order_id_for(customer_id: int, slot: int = 0) -> int:
+    """Seed helper: each customer gets ORDERS_PER_CUSTOMER contiguous order rows."""
     return (customer_id - 1) * ORDERS_PER_CUSTOMER + slot + 1
 
 
 def customer_id_for_order(order_id: int) -> int:
+    """In-memory ownership lookup (stands in for SELECT owner FROM orders WHERE id=?)."""
     return ((order_id - 1) // ORDERS_PER_CUSTOMER) + 1
 
 
@@ -298,6 +300,54 @@ def payment_method_record(customer_id: int, method_id: int = 1) -> dict[str, Any
         "expires": "2028-08",
         "createdAt": "2026-08-01T00:00:00Z",
         "updatedAt": "2026-08-01T00:00:00Z",
+    }
+
+
+def account_no_for(customer_id: int) -> str:
+    """Synthetic account number used as a Body private-resource (CANO-like)."""
+    return f"{10000000 + customer_id}"
+
+
+def customer_id_for_account_no(account_no: str) -> int | None:
+    if not isinstance(account_no, str) or not account_no.isdigit():
+        return None
+    customer_id = int(account_no) - 10000000
+    if customer_id < 1 or customer_id > CUSTOMER_COUNT:
+        return None
+    return customer_id
+
+
+def account_balance_record(customer_id: int) -> dict[str, Any]:
+    """Private balance payload — includes sensitive-looking fields for discovery demos."""
+    return {
+        "accountNo": account_no_for(customer_id),
+        "customerId": customer_id,
+        "currency": "USD",
+        "available": round(1000 + customer_id * 3.25, 2),
+        "held": round((customer_id % 7) * 12.5, 2),
+        "phone": f"+1-415-555-{(customer_id % 10000):04d}",
+        "updatedAt": "2026-10-15T03:12:00Z",
+    }
+
+
+def trading_order_record(
+    *,
+    customer_id: int,
+    account_no: str,
+    tr_id: str,
+    qty: int,
+) -> dict[str, Any]:
+    """Same path, different tr_id — buy vs sell style behaviour distinction."""
+    side = "buy" if tr_id.upper().endswith("BUY") or tr_id.upper() == "BUY" else "sell"
+    return {
+        "orderId": f"TR-{customer_id}-{tr_id}-{qty}",
+        "accountNo": account_no,
+        "customerId": customer_id,
+        "trId": tr_id,
+        "side": side,
+        "qty": qty,
+        "status": "accepted",
+        "createdAt": "2026-10-15T09:00:00Z",
     }
 
 

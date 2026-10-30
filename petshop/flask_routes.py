@@ -13,7 +13,7 @@ def _cors_preflight():
 def _cors(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Forwarded-For, X-Real-IP"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Forwarded-For, X-Real-IP, X-Enforce-Ownership"
     response.headers["Access-Control-Max-Age"] = "86400"
     return response
 
@@ -2181,6 +2181,16 @@ def post_api_v1_auth_login():
 def post_api_v1_auth_token():
     from app import invoke
     return invoke("POST", "/api/v1/auth/token")
+
+@app.route("/api/v1/accounts/inquire", methods=["POST"])
+def post_api_v1_accounts_inquire():
+    from app import invoke
+    return invoke("POST", "/api/v1/accounts/inquire")
+
+@app.route("/api/v1/trading/order", methods=["POST"])
+def post_api_v1_trading_order():
+    from app import invoke
+    return invoke("POST", "/api/v1/trading/order")
 
 @app.route("/api/v1/auth/logout", methods=["POST"])
 def post_api_v1_auth_logout():

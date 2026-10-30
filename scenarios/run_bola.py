@@ -36,10 +36,18 @@ MAX_CYCLIC_IDS = 500
 
 
 class Ctx:
-    def __init__(self, session: requests.Session, base: str, logger: ExchangeLogger):
+    def __init__(
+        self,
+        session: requests.Session,
+        base: str,
+        logger: ExchangeLogger,
+        *,
+        enforce_ownership: bool = False,
+    ):
         self.session = session
         self.base = base.rstrip("/")
         self.logger = logger
+        self.enforce_ownership = enforce_ownership
         self.scenario: str | None = None
         self.expected: str | None = None
 
@@ -55,6 +63,7 @@ class Ctx:
     ):
         url = path if path.startswith("http") else self.base + path
         req_headers = dict(headers or {})
+        req_headers["X-Enforce-Ownership"] = "1" if self.enforce_ownership else "0"
         resp = self.session.request(
             method,
             url,
@@ -142,6 +151,32 @@ def get_private(ctx: Ctx, token: str, path: str, source_ip: str, expected: str |
         headers=headers,
         expected=expected,
         meta={"kind": "private_get", "source_ip": source_ip},
+    )
+    return resp.status_code, body
+
+
+def post_private(
+    ctx: Ctx,
+    token: str,
+    path: str,
+    source_ip: str,
+    json_body: dict,
+    expected: str | None = None,
+    meta: dict | None = None,
+):
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "X-Forwarded-For": source_ip,
+        "X-Real-IP": source_ip,
+    }
+    resp, body = ctx.exchange(
+        "POST",
+        path,
+        headers=headers,
+        json_body=json_body,
+        expected=expected,
+        meta={**(meta or {}), "kind": "private_post", "source_ip": source_ip},
     )
     return resp.status_code, body
 
@@ -372,6 +407,97 @@ def run_id_enumeration(ctx: Ctx, rows, count: int, operator_code_enabled: bool):
         )
 
 
+def run_account_body_bola(ctx: Ctx, rows, operator_code_enabled: bool):
+    """P1b: private resource is accountNo in JSON body (not path)."""
+    ctx.scenario = "account_body_bola"
+    attacker_id = 410
+    path = "/api/v1/accounts/inquire"
+    token = issue(ctx, attacker_id, None)
+    # own account then foreign accounts via Body field
+    targets = [
+        (bola_model.account_no_for(attacker_id), attacker_id, "본인 계좌 Body 조회"),
+        (bola_model.account_no_for(1), 1, "타 계좌 Body 조회"),
+        (bola_model.account_no_for(2), 2, "타 계좌 Body 조회"),
+    ]
+    for account_no, owner, note in targets:
+        expected = bola_model.expected_label(attacker_id, None, owner)
+        status, _body = post_private(
+            ctx,
+            token,
+            path,
+            "192.0.2.99",
+            {"accountNo": account_no},
+            expected=expected,
+            meta={"accountNo": account_no},
+        )
+        record(
+            rows,
+            scenario="account_body_bola",
+            expected=expected,
+            method="POST",
+            path=path,
+            status=status,
+            source_ip="192.0.2.99",
+            operator_code=None,
+            customer_id=attacker_id,
+            issued_at=None,
+            owner_customer_id=owner,
+            notes=note,
+            operator_code_enabled=operator_code_enabled,
+        )
+
+
+def run_abnormal_probe(ctx: Ctx, rows, operator_code_enabled: bool):
+    """P3: a few benign self lookups, then sudden foreign object probing."""
+    ctx.scenario = "abnormal_probe"
+    customer_id = 410
+    token = issue(ctx, customer_id, None)
+    # benign self
+    for slot in (0, 1):
+        order_id = bola_model.order_id_for(customer_id, slot)
+        owner = bola_model.customer_id_for_order(order_id)
+        path = f"/api/v1/orders/{order_id}"
+        expected = bola_model.expected_label(customer_id, None, owner)
+        status, _body = get_private(ctx, token, path, "192.0.2.60", expected=expected)
+        record(
+            rows,
+            scenario="abnormal_probe",
+            expected=expected,
+            method="GET",
+            path=path,
+            status=status,
+            source_ip="192.0.2.60",
+            operator_code=None,
+            customer_id=customer_id,
+            issued_at=None,
+            owner_customer_id=owner,
+            notes="정상: 자기 주문",
+            operator_code_enabled=operator_code_enabled,
+        )
+    # abrupt foreign probe
+    for cid in (1, 2, 3, 4, 5):
+        order_id = bola_model.order_id_for(cid, 0)
+        owner = bola_model.customer_id_for_order(order_id)
+        path = f"/api/v1/orders/{order_id}"
+        expected = bola_model.expected_label(customer_id, None, owner)
+        status, _body = get_private(ctx, token, path, "192.0.2.60", expected=expected)
+        record(
+            rows,
+            scenario="abnormal_probe",
+            expected=expected,
+            method="GET",
+            path=path,
+            status=status,
+            source_ip="192.0.2.60",
+            operator_code=None,
+            customer_id=customer_id,
+            issued_at=None,
+            owner_customer_id=owner,
+            notes="이상: 타인 주문 급탐색",
+            operator_code_enabled=operator_code_enabled,
+        )
+
+
 def summarize(rows: list[dict]) -> dict:
     by_scenario: dict[str, dict[str, int]] = {}
     for row in rows:
@@ -393,7 +519,9 @@ SCENARIOS = (
     "operator_fixed",
     "access_token_reissue",
     "cross_customer_bola",
+    "account_body_bola",
     "id_enumeration",
+    "abnormal_probe",
 )
 
 
@@ -410,8 +538,12 @@ def run_selected(ctx: Ctx, rows, name: str, args, operator_code_enabled: bool):
         run_access_token_reissue(ctx, rows, operator_code_enabled)
     elif name == "cross_customer_bola":
         run_cross_customer_bola(ctx, rows, operator_code_enabled)
+    elif name == "account_body_bola":
+        run_account_body_bola(ctx, rows, operator_code_enabled)
     elif name == "id_enumeration":
         run_id_enumeration(ctx, rows, args.enum, operator_code_enabled)
+    elif name == "abnormal_probe":
+        run_abnormal_probe(ctx, rows, operator_code_enabled)
     else:
         raise SystemExit(f"알 수 없는 시나리오: {name}")
 
@@ -452,6 +584,12 @@ def main():
     )
     parser.add_argument("--fixed", type=int, default=16, help="고정형 샘플 수")
     parser.add_argument("--enum", type=int, default=20, help="ID 열거 샘플 수")
+    parser.add_argument(
+        "--enforce-ownership",
+        action="store_true",
+        default=False,
+        help="정상 API 모드: X-Enforce-Ownership=1 (남의 객체면 403)",
+    )
     parser.add_argument("--out", type=Path, default=None, help="요약 JSONL 경로")
     args = parser.parse_args()
 
@@ -467,7 +605,7 @@ def main():
 
     session = requests.Session()
     logger = ExchangeLogger()
-    ctx = Ctx(session, args.base, logger)
+    ctx = Ctx(session, args.base, logger, enforce_ownership=args.enforce_ownership)
 
     health = session.get(f"{args.base.rstrip('/')}/health", timeout=5)
     health.raise_for_status()
@@ -507,8 +645,14 @@ def main():
     }, ensure_ascii=False, indent=2))
 
     cross = [r for r in rows if r["scenario"] == "cross_customer_bola"]
-    if cross and any(r["expected"] != "bola" or r["status"] != 200 for r in cross):
-        raise SystemExit("cross_customer_bola 는 expected=bola 이고 HTTP 200 이어야 합니다")
+    if cross:
+        if any(r["expected"] != "bola" for r in cross):
+            raise SystemExit("cross_customer_bola 는 expected=bola 이어야 합니다")
+        want = 403 if args.enforce_ownership else 200
+        if any(r["status"] != want for r in cross):
+            raise SystemExit(
+                f"cross_customer_bola 는 enforce={'on' if args.enforce_ownership else 'off'} 일 때 HTTP {want}"
+            )
     cyclic = [r for r in rows if r["scenario"] == "operator_cyclic"]
     if cyclic and any(r["expected"] != "benign" or r["status"] != 200 for r in cyclic):
         raise SystemExit("operator_cyclic 는 expected=benign 이고 HTTP 200 이어야 합니다")

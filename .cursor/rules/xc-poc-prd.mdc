@@ -1,0 +1,39 @@
+---
+description: Keep XC-PoC work aligned with docs/PRD.md (P1/P2/P3, local attacker, Pet Shop target only)
+alwaysApply: true
+---
+
+# XC-PoC PRD alignment
+
+Before changing this repo, read and follow `docs/PRD.md`.
+
+## Concept locks
+
+- **Goal**: traffic generator to validate whether XC separates normal multi-ID/IP/token patterns from unauthorized object access — not a “BOLA screenshot demo”.
+- **Pet Shop** = target API. Default **vulnerable** (no ownership) for XC BOLA PoC (HTTP 200 leaks).
+  - Normal-API mode: `ENFORCE_OWNERSHIP=1` or header `X-Enforce-Ownership: 1` → JWT subject vs in-memory owner → 401/403.
+  - Lab UI toggle / CLI `--enforce-ownership` must stay in sync with this dual mode.
+- **Attack UI/CLI** runs **locally** (`scenarios/`). Never host the attacker lab as the primary UX on the Pet Shop host (`/lab` = redirect/notice only).
+- **Do not** put real customer/securities product names or real Open API paths into product UI/code. Map concepts onto Pet Shop (`customer_id`, `order`, `accountNo`).
+
+## Scenario groups (keep separated)
+
+| Group | Meaning | Examples |
+|-------|---------|----------|
+| **P1** | Object-level BOLA | path cross-access, **Body `accountNo`**, ID enum |
+| **P2** | Identity / false-positive | cyclic IDs, fixed ID+IP change, token reissue, `operator_code` ON/OFF |
+| **P3** | Behaviour shift | benign self then abrupt foreign probe |
+| baseline | Catalog / self-order | |
+
+IP change ≠ BOLA. BOLA = access to an object the subject should not own.
+
+## UX rules
+
+- Show **only options required by the selected scenario**.
+- HTTP log request/response panels need **clear titles** (what info they show).
+- Mention XC **learning time**; do not treat “no alert immediately” as unsupported.
+- Local labels `benign`/`bola` stay in the runner — never stamp them into API responses.
+
+## Out of scope for this lab
+
+Inline block proof, 20K TPS, real mirroring/masking, CE install — document only; do not fake support.

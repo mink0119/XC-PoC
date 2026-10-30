@@ -2,7 +2,11 @@
 """In-memory Pet Shop API. Legacy /pet routes plus a storefront-sized catalog.
 
 BOLA lab pieces live in bola_model.py: operator JWT and owned private objects.
-This server does not enforce ownership — defense is expected only from XC.
+
+Ownership (like a normal API):
+  - Default ENFORCE_OWNERSHIP=0 → vulnerable (XC BOLA PoC sees HTTP 200 leaks).
+  - ENFORCE_OWNERSHIP=1 or request header X-Enforce-Ownership: 1 →
+    compare JWT subject to object owner (in-memory “DB”); deny with 401/403.
 """
 
 import json
@@ -15,6 +19,9 @@ import bola_model
 
 ROOT = Path(__file__).resolve().parent
 PORT = int(os.environ.get("PORT", "80"))
+ENFORCE_OWNERSHIP_DEFAULT = os.environ.get("ENFORCE_OWNERSHIP", "0").strip().lower() in (
+    "1", "true", "yes", "on",
+)
 STATUSES = ("available", "pending", "sold")
 
 _lock = threading.Lock()
@@ -745,7 +752,7 @@ def _write_flask_routes():
         "def _cors(response):",
         '    response.headers["Access-Control-Allow-Origin"] = "*"',
         '    response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"',
-        '    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Forwarded-For, X-Real-IP"',
+        '    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Forwarded-For, X-Real-IP, X-Enforce-Ownership"',
         '    response.headers["Access-Control-Max-Age"] = "86400"',
         "    return response",
         "",
@@ -783,6 +790,8 @@ def _write_flask_routes():
         ("GET", "/static/swagger-ui.css"),
         ("GET", "/static/swagger-ui-bundle.js"),
         ("GET", "/static/lab.html"),
+        ("POST", "/api/v1/accounts/inquire"),
+        ("POST", "/api/v1/trading/order"),
         ("GET", "/pet"),
         ("POST", "/pet"),
         ("GET", "/pet/findByStatus"),
@@ -917,20 +926,104 @@ def _handle_auth_token(body):
     return _response(200, issued)
 
 
+def _enforce_ownership_enabled():
+    """Normal-API mode: env default, overridable per request for lab demos."""
+    from flask import request
+    hdr = request.headers.get("X-Enforce-Ownership")
+    if hdr is not None and str(hdr).strip() != "":
+        return str(hdr).strip().lower() in ("1", "true", "yes", "on")
+    return ENFORCE_OWNERSHIP_DEFAULT
+
+
+def _deny_unless_owner(owner_customer_id: int):
+    """Like a normal API: JWT subject must own the object (or be assigned operator).
+
+    Returns a Flask response to short-circuit, or None if access is allowed /
+    enforcement is off (vulnerable PoC mode).
+    """
+    if not _enforce_ownership_enabled():
+        return None
+    from flask import request
+    claims = bola_model.claims_from_authorization(request.headers.get("Authorization"))
+    if not claims:
+        return _response(401, {
+            "message": "인증이 필요합니다",
+            "reason": "missing_or_invalid_token",
+        })
+    if bola_model.authorized_for_owner(claims, owner_customer_id):
+        return None
+    return _response(403, {
+        "message": "이 객체에 대한 권한이 없습니다",
+        "reason": "ownership_mismatch",
+        "tokenCustomerId": claims.get("customer_id"),
+        "ownerCustomerId": owner_customer_id,
+    })
+
+
+def _handle_account_inquire(body):
+    """accountNo in JSON body selects the private object (in-memory account store)."""
+    if not isinstance(body, dict):
+        return _response(400, _error("JSON object 가 필요합니다"))
+    account_no = body.get("accountNo")
+    if not isinstance(account_no, str) or not account_no.strip():
+        return _response(400, _error("accountNo 는 비어 있지 않은 문자열이어야 합니다"))
+    owner = bola_model.customer_id_for_account_no(account_no.strip())
+    if owner is None:
+        return _response(404, _error("계좌를 찾을 수 없습니다"))
+    denied = _deny_unless_owner(owner)
+    if denied is not None:
+        return denied
+    return _response(200, bola_model.account_balance_record(owner))
+
+
+def _handle_trading_order(body):
+    """Same path; tr_id distinguishes buy/sell-style actions (behaviour / discovery)."""
+    if not isinstance(body, dict):
+        return _response(400, _error("JSON object 가 필요합니다"))
+    account_no = body.get("accountNo")
+    tr_id = body.get("tr_id") or body.get("trId")
+    qty = body.get("qty", 1)
+    if not isinstance(account_no, str) or not account_no.strip():
+        return _response(400, _error("accountNo 는 비어 있지 않은 문자열이어야 합니다"))
+    if not isinstance(tr_id, str) or not tr_id.strip():
+        return _response(400, _error("tr_id 는 비어 있지 않은 문자열이어야 합니다"))
+    if not isinstance(qty, int) or qty < 1:
+        return _response(400, _error("qty 는 양의 정수여야 합니다"))
+    owner = bola_model.customer_id_for_account_no(account_no.strip())
+    if owner is None:
+        return _response(404, _error("계좌를 찾을 수 없습니다"))
+    denied = _deny_unless_owner(owner)
+    if denied is not None:
+        return denied
+    return _response(200, bola_model.trading_order_record(
+        customer_id=owner,
+        account_no=account_no.strip(),
+        tr_id=tr_id.strip(),
+        qty=qty,
+    ))
+
+
+def _ok_private(owner_customer_id: int, payload):
+    denied = _deny_unless_owner(owner_customer_id)
+    if denied is not None:
+        return denied
+    return _response(200, payload)
+
+
 def _handle_private_get(path):
-    """Return private objects without ownership checks (vulnerable by design)."""
+    """Private objects from in-memory ownership store (seeded maps ≈ DB rows)."""
     parts = [part for part in path.split("/") if part]
     # /api/v1/{orders|payments|customers|pets}/{id}
     if len(parts) == 4 and parts[0] == "api" and parts[1] == "v1" and parts[3].isdigit():
         resource, oid = parts[2], int(parts[3])
         if resource == "orders" and 1 <= oid <= bola_model.CUSTOMER_COUNT * bola_model.ORDERS_PER_CUSTOMER:
-            return _response(200, bola_model.order_record(oid))
+            return _ok_private(bola_model.customer_id_for_order(oid), bola_model.order_record(oid))
         if resource == "payments" and 1 <= oid <= bola_model.CUSTOMER_COUNT * bola_model.PAYMENTS_PER_CUSTOMER:
-            return _response(200, bola_model.payment_record(oid))
+            return _ok_private(bola_model.customer_id_for_payment(oid), bola_model.payment_record(oid))
         if resource == "customers" and 1 <= oid <= bola_model.CUSTOMER_COUNT:
-            return _response(200, bola_model.customer_record(oid))
+            return _ok_private(oid, bola_model.customer_record(oid))
         if resource == "pets" and 1 <= oid <= bola_model.CUSTOMER_COUNT:
-            return _response(200, bola_model.pet_record(oid))
+            return _ok_private(bola_model.customer_id_for_pet(oid), bola_model.pet_record(oid))
     # /api/v1/pets/{id}/medical-records
     if (
         len(parts) == 5
@@ -943,15 +1036,16 @@ def _handle_private_get(path):
         pet_id = int(parts[3])
         if pet_id < 1 or pet_id > bola_model.CUSTOMER_COUNT:
             return None
+        owner = bola_model.customer_id_for_pet(pet_id)
         items = [
             bola_model.medical_record(bola_model.medical_record_id_for(pet_id, slot))
             for slot in range(bola_model.MEDICAL_PER_PET)
         ]
-        return _response(200, {
+        return _ok_private(owner, {
             "items": items,
             "total": len(items),
             "petId": pet_id,
-            "customerId": bola_model.customer_id_for_pet(pet_id),
+            "customerId": owner,
         })
     # /api/v1/customers/{id}/orders|payment-methods
     if (
@@ -972,7 +1066,7 @@ def _handle_private_get(path):
             ]
         else:
             items = [bola_model.payment_method_record(customer_id, 1)]
-        return _response(200, {
+        return _ok_private(customer_id, {
             "items": items,
             "total": len(items),
             "customerId": customer_id,
@@ -988,7 +1082,12 @@ def invoke(method, template, **ids):
     path = path.rstrip("/") or "/"
     query = request.args.to_dict(flat=False)
     if path == "/health":
-        return _response(200, {"status": "ok"})
+        return _response(200, {
+            "status": "ok",
+            "enforceOwnershipDefault": ENFORCE_OWNERSHIP_DEFAULT,
+            "enforceOwnershipActive": _enforce_ownership_enabled(),
+            "note": "X-Enforce-Ownership: 1 = normal API ownership check; 0 = vulnerable (XC BOLA PoC)",
+        })
     if path == "/swagger.json":
         return _response(200, _openapi())
     if path == "/docs":
@@ -1010,6 +1109,10 @@ def invoke(method, template, **ids):
             return _response(400, _error(err))
     if method == "POST" and path == "/api/v1/auth/token":
         return _handle_auth_token(body or {})
+    if method == "POST" and path == "/api/v1/accounts/inquire":
+        return _handle_account_inquire(body or {})
+    if method == "POST" and path == "/api/v1/trading/order":
+        return _handle_trading_order(body or {})
     if method == "GET":
         private = _handle_private_get(path)
         if private is not None:
@@ -1029,7 +1132,8 @@ def main():
         write_artifacts()
         return
     from flask_routes import app
-    print(f"Pet Shop API listening on 0.0.0.0:{PORT}  routes={len(ROUTES)}  docs=/docs  (attacker lab runs locally)")
+    mode = "ENFORCE ownership (normal API)" if ENFORCE_OWNERSHIP_DEFAULT else "vulnerable (no ownership; XC PoC)"
+    print(f"Pet Shop API listening on 0.0.0.0:{PORT}  routes={len(ROUTES)}  docs=/docs  mode={mode}")
     app.run(host="0.0.0.0", port=PORT, threaded=True)
 
 
