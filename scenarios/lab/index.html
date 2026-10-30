@@ -226,6 +226,41 @@
     }
     .learn-field { margin: 0; }
     .learn-field input { max-width: 120px; }
+    .batch-lead {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+    .batch-modes {
+      display: grid;
+      gap: 8px;
+      margin: 0 0 14px;
+    }
+    .batch-mode {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0b1220;
+      cursor: pointer;
+    }
+    .batch-mode:has(input:checked) {
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px var(--accent-dim);
+    }
+    .batch-mode input { margin-top: 3px; }
+    .batch-mode strong { display: block; margin-bottom: 2px; }
+    .batch-tuning { margin-top: 10px; }
+    .batch-opts {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px dashed var(--line);
+      border-radius: 10px;
+      background: #0b1220;
+    }
     .status { color: var(--muted); font-size: 0.88rem; flex: 1 1 180px; }
     .detail h3 { margin: 0 0 6px; font-size: 1.15rem; }
     .detail .desc { color: var(--muted); margin: 0 0 12px; }
@@ -338,7 +373,7 @@
     <h1>BOLA / 이상행위 시나리오 실행기</h1>
     <p class="lead">
       목표는 “탐지 화면 한 장”이 아니라 <strong>정상 다중 ID·IP 패턴 vs 비정상 객체 접근</strong>을 구분할 수 있는지 검증하는 트래픽을 만드는 것입니다.
-      시나리오는 <strong>P1 객체 BOLA</strong> / <strong>P2 오탐·식별</strong> / <strong>P3 이상행위</strong>로 나뉩니다. 선택한 시나리오 옵션만 표시됩니다.
+      실행은 <strong>일괄 트래픽</strong>(정상 학습 · 비정상 · 전체)에서만 합니다. 왼쪽은 시나리오 설명용입니다.
       BOLA는 XC 학습 기간이 필요할 수 있어, 실행 직후 이벤트가 없다고 미지원으로 단정하지 마세요.
       상세 방향: <code>docs/PRD.md</code>
     </p>
@@ -346,19 +381,23 @@
 
   <div class="layout">
     <aside class="panel">
-      <h2>시나리오 (PRD 그룹)</h2>
-      <p class="side-hint">P1=권한 없는 객체 접근 · P2=정상인데 오탐 나기 쉬운 패턴 · P3=정상 후 급격한 이상 탐색</p>
+      <h2>시나리오 설명 (참고)</h2>
+      <p class="side-hint">실행은 오른쪽 <b>일괄 트래픽</b>에서 합니다. 여기는 흐름·예시만 봅니다.</p>
       <div class="scenario-list" id="scenarioList"></div>
     </aside>
 
     <div class="main-col">
-      <section class="panel options">
-        <h2>공통 · 대상 서버</h2>
+      <section class="panel batch-panel">
+        <h2>일괄 트래픽 생성</h2>
+        <p class="batch-lead">
+          시나리오를 하나씩 고르지 않습니다.
+          <b>정상</b>(XC 학습) · <b>비정상</b>(BOLA/이상) · <b>전체</b> 중 하나로 세트를 돌립니다.
+        </p>
         <div class="row">
           <label class="field" style="grid-column: 1 / -1; max-width: 520px;">
             <strong>대상 서버 주소 (Pet Shop)</strong>
             <input id="base" type="text" value="http://192.168.47.81" />
-            <span class="opt-help">공격 UI 주소가 아닙니다. 트래픽을 보낼 Pet Shop URL입니다. 예: http://192.168.47.81</span>
+            <span class="opt-help">트래픽을 보낼 Pet Shop URL (가능하면 XC VIP). 예: http://192.168.47.81</span>
           </label>
         </div>
         <div class="toggle-block">
@@ -367,67 +406,77 @@
             <span>
               <strong>대상 서버 소유권 검사 (정상 API 모드)</strong>
               <span class="opt-help" style="display:block;margin-top:4px">
-                <b>끄기(기본)</b> — 소유권 미검사 → 남의 주문도 HTTP 200 (취약, XC BOLA PoC용).<br />
-                <b>켜기</b> — 정상 API처럼 JWT의 <code>customer_id</code> 와 객체 소유자(인메모리 저장소)를 비교. 남이면 <code>403</code>.
-                요청 헤더 <code>X-Enforce-Ownership: 1</code> 로 전달합니다.
+                <b>끄기(기본)</b> — 소유권 미검사 → 남의 객체도 HTTP 200 (XC BOLA PoC).<br />
+                <b>켜기</b> — JWT <code>customer_id</code> vs 소유자 비교, 남이면 <code>403</code> (<code>X-Enforce-Ownership: 1</code>).
               </span>
             </span>
           </label>
         </div>
 
-        <div class="scenario-opts" id="scenarioOpts">
-          <p class="label" id="scenarioOptsLabel">이 시나리오 설정</p>
-          <div class="row" id="scenarioOptsRow">
-            <label class="field opt-slot" data-opt="cyclicIds" hidden>
-              <strong>몇 개 계정을 돌아가며 쓸까</strong>
+        <div class="batch-modes" role="radiogroup" aria-label="트래픽 세트">
+          <label class="batch-mode">
+            <input type="radio" name="batchMode" value="benign" checked />
+            <span>
+              <strong>정상 · XC 학습</strong>
+              <span class="opt-help">공개 카탈로그 · 내 주문 · 순환/고정 운용 · 토큰 재발급 (BOLA 제외)</span>
+            </span>
+          </label>
+          <label class="batch-mode">
+            <input type="radio" name="batchMode" value="attack" />
+            <span>
+              <strong>비정상 · BOLA / 이상행위</strong>
+              <span class="opt-help">Path·Body 교차 접근 · ID 열거 · 정상 후 급탐색 (학습 끝난 뒤)</span>
+            </span>
+          </label>
+          <label class="batch-mode">
+            <input type="radio" name="batchMode" value="all" />
+            <span>
+              <strong>전체 시나리오</strong>
+              <span class="opt-help">정상 + 비정상 전부 (데모·회귀용)</span>
+            </span>
+          </label>
+        </div>
+
+        <div class="batch-opts">
+          <label class="field learn-field">
+            <strong>세트 반복 횟수</strong>
+            <input id="batchRounds" type="number" min="1" max="2000" value="300" />
+            <span class="opt-help">선택한 세트를 몇 바퀴 돌릴지. XC 학습(정상)은 보통 300. 비정상·전체는 1~수십이면 충분한 경우가 많습니다. HTTP 상세 로그는 남기지 않습니다.</span>
+          </label>
+          <div class="row batch-tuning">
+            <label class="field">
+              <strong>순환 계정 수</strong>
               <input id="cyclicIds" type="number" min="1" max="500" value="264" />
-              <span class="opt-help">1–500. 264 이하면 IP 2개를 번갈아 쓰고, 그보다 많으면 IP 1개로 몰아서 보냅니다.</span>
             </label>
-            <label class="field opt-slot" data-opt="cyclicSample" hidden>
-              <strong>몇 번 조회할까</strong>
+            <label class="field">
+              <strong>순환 조회 수</strong>
               <input id="cyclicSample" type="number" min="1" max="200" value="12" />
-              <span class="opt-help">실제로 보낼 조회 횟수입니다. 계정 수보다 작아도 됩니다(처음부터 다시 순환).</span>
             </label>
-            <label class="field opt-slot" data-opt="fixedSample" hidden>
-              <strong>IP를 몇 번 바꿔 볼까</strong>
+            <label class="field">
+              <strong>고정형 IP 횟수</strong>
               <input id="fixedSample" type="number" min="1" max="50" value="6" />
-              <span class="opt-help">같은 계정으로, 서로 다른 출발 IP를 몇 번 붙여 보낼지입니다.</span>
             </label>
-            <label class="field opt-slot" data-opt="enumCount" hidden>
-              <strong>주문 번호를 몇 개까지 올려볼까</strong>
+            <label class="field">
+              <strong>ID 열거 개수</strong>
               <input id="enumCount" type="number" min="1" max="100" value="10" />
-              <span class="opt-help">1, 2, 3… 순으로 주문 ID를 몇 개까지 조회할지입니다.</span>
             </label>
           </div>
-          <div class="toggle-block opt-slot" data-opt="operatorCode" hidden>
+          <div class="toggle-block">
             <label class="toggle">
               <input id="operatorCode" type="checkbox" />
               <span>
-                <strong>토큰에 운영자 표시(operator_code) 넣기</strong>
-                <span class="opt-help" style="display:block;margin-top:4px">
-                  <b>끄기(기본)</b> — 지금처럼 토큰에 운영자 정보가 없음. 같은 IP에서 여러 계정을 쓰면 XC가 공격으로 오인할 수 있음(오탐 검토).<br />
-                  <b>켜기</b> — 토큰에 운영자 코드를 넣음. “운영자라고 알려 줬을 때” XC가 다르게 보는지 비교할 때 사용.
-                </span>
+                <strong>토큰에 operator_code 넣기</strong>
+                <span class="opt-help" style="display:block;margin-top:4px">P2 정상 세트에 적용. 끄기=현재형 오탐 검토, 켜기=운영자 claim 비교.</span>
               </span>
             </label>
           </div>
-          <p class="empty-opts" id="noScenarioOpts" hidden>이 시나리오는 추가 설정이 없습니다. 대상 서버만 맞으면 바로 실행하면 됩니다.</p>
         </div>
 
-        <div class="learn-bar">
-          <label class="field learn-field">
-            <strong>XC 학습 반복 (전체 시나리오)</strong>
-            <input id="learnRounds" type="number" min="1" max="500" value="100" />
-            <span class="opt-help">전체 시나리오 세트를 몇 번 돌릴지입니다. XC Discovery·BOLA baseline용 트래픽 양산. HTTP 상세 로그는 남기지 않습니다.</span>
-          </label>
-        </div>
         <div class="actions">
-          <button type="button" class="run" id="runBtn">이 시나리오 실행</button>
-          <button type="button" class="ghost" id="runAllBtn">전체 시나리오 실행</button>
-          <button type="button" class="run learn" id="learnBtn">학습 트래픽 생성</button>
+          <button type="button" class="run learn" id="batchRunBtn">선택한 세트 실행</button>
           <button type="button" class="ghost" id="stopLearnBtn" disabled>중지</button>
           <button type="button" class="ghost" id="pingBtn">대상 서버 연결 확인</button>
-          <span class="status" id="status">시나리오를 선택하세요</span>
+          <span class="status" id="status">세트를 고른 뒤 실행하세요 (기본: 정상 · 300회)</span>
         </div>
       </section>
 
@@ -1043,6 +1092,9 @@ Authorization: Bearer (410)
     const ORDER = GROUP_ORDER.flatMap((g) =>
       Object.keys(SCENARIO_META).filter((id) => SCENARIO_META[id].group === g)
     );
+    /** 일괄 세트: 정상 학습 / 비정상(BOLA·이상) / 전체 */
+    const BATCH_BENIGN = ORDER.filter((id) => SCENARIO_META[id].expected === "benign");
+    const BATCH_ATTACK = ORDER.filter((id) => SCENARIO_META[id].expected !== "benign");
 
     async function renderFlow(text) {
       const el = document.getElementById("flowChart");
@@ -1056,20 +1108,6 @@ Authorization: Bearer (410)
       } catch (err) {
         el.textContent = text + "\n\n(표시 오류: " + err.message + ")";
       }
-    }
-
-    function syncOptions(id) {
-      const meta = SCENARIO_META[id];
-      const needed = new Set(meta.options || []);
-      document.querySelectorAll(".opt-slot").forEach((el) => {
-        const key = el.getAttribute("data-opt");
-        el.hidden = !needed.has(key);
-      });
-      const hasAny = needed.size > 0;
-      document.getElementById("noScenarioOpts").hidden = hasAny;
-      document.getElementById("scenarioOptsLabel").hidden = !hasAny;
-      document.getElementById("scenarioOptsLabel").textContent =
-        "이 시나리오 설정 · " + meta.title;
     }
 
     function selectScenario(id) {
@@ -1087,10 +1125,22 @@ Authorization: Bearer (410)
       document.getElementById("flowTitle").textContent = "요청 흐름도 · " + meta.title;
       document.getElementById("exampleTitle").textContent = "요청 예시 · " + meta.title;
       document.getElementById("exampleBox").textContent = meta.example;
-      syncOptions(id);
       renderFlow(meta.flow);
-      document.getElementById("status").textContent =
-        "선택: " + meta.title + " · 아래 설정 확인 후 실행";
+    }
+
+    function selectedBatchMode() {
+      const el = document.querySelector('input[name="batchMode"]:checked');
+      return el ? el.value : "benign";
+    }
+
+    function batchPlan(mode) {
+      if (mode === "benign") {
+        return { ids: BATCH_BENIGN.slice(), label: "정상 · XC 학습 (" + BATCH_BENIGN.length + "개)" };
+      }
+      if (mode === "attack") {
+        return { ids: BATCH_ATTACK.slice(), label: "비정상 · BOLA/이상 (" + BATCH_ATTACK.length + "개)" };
+      }
+      return { ids: ORDER.slice(), label: "전체 시나리오 (" + ORDER.length + "개)" };
     }
 
     function scenarioTitle(id) {
@@ -1113,14 +1163,12 @@ Authorization: Bearer (410)
       const benign = rows.filter((r) => r.expected === "benign").length;
       const bola = rows.filter((r) => r.expected === "bola").length;
       const c = cfg();
-      const meta = SCENARIO_META[selectedId];
-      const showOp = meta && meta.options.includes("operatorCode");
       document.getElementById("summary").innerHTML = `
         <span class="pill">합계 ${rows.length}</span>
         <span class="pill">정상 ${benign}</span>
         <span class="pill">BOLA ${bola}</span>
         <span class="pill">HTTP ${httpLog.entries.length}</span>
-        ${showOp ? `<span class="pill">운영자 표시 ${c.operatorCodeEnabled ? "ON" : "OFF"}</span>` : ""}
+        <span class="pill">운영자 표시 ${c.operatorCodeEnabled ? "ON" : "OFF"}</span>
         <span class="pill">대상 ${c.base}</span>`;
     }
 
@@ -1223,49 +1271,26 @@ Authorization: Bearer (410)
       URL.revokeObjectURL(a.href);
     }
 
-    function setBusy(v, { learning } = {}) {
+    function setBusy(v, { batch } = {}) {
       busy = v;
-      document.getElementById("runBtn").disabled = v;
-      document.getElementById("runAllBtn").disabled = v;
-      document.getElementById("learnBtn").disabled = v;
+      document.getElementById("batchRunBtn").disabled = v;
       document.getElementById("pingBtn").disabled = v;
-      document.getElementById("learnRounds").disabled = v;
-      document.getElementById("stopLearnBtn").disabled = !(v && learning);
+      document.getElementById("batchRounds").disabled = v;
+      document.querySelectorAll('input[name="batchMode"]').forEach((el) => { el.disabled = v; });
+      document.getElementById("stopLearnBtn").disabled = !(v && batch);
     }
 
-    async function runSelected(all) {
+    async function runBatchTraffic() {
       if (busy) return;
-      setBusy(true);
-      const c = cfg();
-      document.getElementById("base").value = c.base;
-      const rows = [];
-      const statusEl = document.getElementById("status");
-      try {
-        statusEl.textContent = "대상 서버 확인 중…";
-        currentScenario = null;
-        const health = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
-        if (!health.ok) throw new Error("연결 실패 HTTP " + health.status + " — 대상 서버 주소를 확인하세요");
-        const ids = all ? ORDER : [selectedId];
-        for (const id of ids) {
-          statusEl.textContent = "실행 중: " + scenarioTitle(id);
-          await RUNNERS[id](c, rows);
-          render(rows);
-        }
-        statusEl.textContent = "완료 · 결과 " + rows.length + "건 / HTTP " + httpLog.entries.length + "건 → " + c.base;
-      } catch (err) {
-        statusEl.textContent = "실패: " + (err && err.message ? err.message : err);
-        render(rows);
-      } finally {
-        currentScenario = null;
-        setBusy(false);
+      const rounds = clamp(Number(document.getElementById("batchRounds").value), 1, 2000);
+      document.getElementById("batchRounds").value = String(rounds);
+      const mode = selectedBatchMode();
+      const plan = batchPlan(mode);
+      if (!plan.ids.length) {
+        document.getElementById("status").textContent = "실행할 시나리오 세트가 비어 있습니다";
+        return;
       }
-    }
-
-    async function runLearnTraffic() {
-      if (busy) return;
-      const rounds = clamp(Number(document.getElementById("learnRounds").value), 1, 500);
-      document.getElementById("learnRounds").value = String(rounds);
-      setBusy(true, { learning: true });
+      setBusy(true, { batch: true });
       learnQuiet = true;
       learnAbort = false;
       learnHttpCount = 0;
@@ -1277,37 +1302,33 @@ Authorization: Bearer (410)
       const t0 = Date.now();
       let finishedRounds = 0;
       try {
-        statusEl.textContent = "학습 준비 · 대상 서버 확인…";
+        statusEl.textContent = "준비 · 대상 서버 확인… (" + plan.label + " ×" + rounds + ")";
         currentScenario = null;
         const health = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
         if (!health.ok) throw new Error("연결 실패 HTTP " + health.status + " — 대상 서버 주소를 확인하세요");
         for (let r = 1; r <= rounds; r++) {
           if (learnAbort) break;
           const rows = [];
-          for (const id of ORDER) {
+          for (const id of plan.ids) {
             if (learnAbort) break;
             statusEl.textContent =
-              "학습 " + r + "/" + rounds + " · " + scenarioTitle(id) +
+              r + "/" + rounds + " · " + plan.label + " · " + scenarioTitle(id) +
               " · HTTP " + learnHttpCount + " (ok " + learnOkCount + " / fail " + learnFailCount + ")";
             await RUNNERS[id](c, rows);
             await sleep(0);
           }
           if (!learnAbort) finishedRounds = r;
-          if (r % 5 === 0 || r === rounds) await sleep(0);
+          if (r % 10 === 0 || r === rounds) await sleep(0);
         }
         const sec = ((Date.now() - t0) / 1000).toFixed(1);
-        if (learnAbort) {
-          statusEl.textContent =
-            "학습 중지 · " + finishedRounds + "/" + rounds + "회 · HTTP " + learnHttpCount +
-            " (ok " + learnOkCount + " / fail " + learnFailCount + ") · " + sec + "s → " + c.base;
-        } else {
-          statusEl.textContent =
-            "학습 완료 · 전체 시나리오 ×" + finishedRounds + " · HTTP " + learnHttpCount +
-            " (ok " + learnOkCount + " / fail " + learnFailCount + ") · " + sec + "s → " + c.base;
-        }
+        const verb = learnAbort ? "중지" : "완료";
+        statusEl.textContent =
+          verb + " · " + plan.label + " ×" + finishedRounds +
+          " · HTTP " + learnHttpCount +
+          " (ok " + learnOkCount + " / fail " + learnFailCount + ") · " + sec + "s → " + c.base;
       } catch (err) {
         statusEl.textContent =
-          "학습 실패 (" + finishedRounds + "/" + rounds + "): " +
+          "실패 (" + finishedRounds + "/" + rounds + "): " +
           (err && err.message ? err.message : err) +
           " · HTTP " + learnHttpCount;
       } finally {
@@ -1339,12 +1360,18 @@ Authorization: Bearer (410)
         if (!btn) return;
         selectScenario(btn.getAttribute("data-id"));
       });
-      document.getElementById("runBtn").addEventListener("click", () => runSelected(false));
-      document.getElementById("runAllBtn").addEventListener("click", () => runSelected(true));
-      document.getElementById("learnBtn").addEventListener("click", () => runLearnTraffic());
+      document.getElementById("batchRunBtn").addEventListener("click", () => runBatchTraffic());
       document.getElementById("stopLearnBtn").addEventListener("click", () => {
         learnAbort = true;
         document.getElementById("status").textContent = "중지 요청… 현재 시나리오 끝나면 멈춥니다";
+      });
+      document.querySelectorAll('input[name="batchMode"]').forEach((el) => {
+        el.addEventListener("change", () => {
+          const plan = batchPlan(selectedBatchMode());
+          const rounds = document.getElementById("batchRounds").value;
+          document.getElementById("status").textContent =
+            plan.label + " · 반복 " + rounds + "회 · 실행 대기";
+        });
       });
       document.getElementById("pingBtn").addEventListener("click", async () => {
         const c = cfg();

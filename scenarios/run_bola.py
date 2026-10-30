@@ -524,6 +524,22 @@ SCENARIOS = (
     "abnormal_probe",
 )
 
+# Batch sets (lab UI: 정상 / 비정상 / 전체)
+BATCH_BENIGN_SCENARIOS = (
+    "public_catalog",
+    "self_order",
+    "operator_cyclic",
+    "operator_fixed",
+    "access_token_reissue",
+)
+BATCH_ATTACK_SCENARIOS = (
+    "cross_customer_bola",
+    "account_body_bola",
+    "id_enumeration",
+    "abnormal_probe",
+)
+LEARN_BENIGN_SCENARIOS = BATCH_BENIGN_SCENARIOS  # alias
+
 
 def run_selected(ctx: Ctx, rows, name: str, args, operator_code_enabled: bool):
     if name == "public_catalog":
@@ -594,7 +610,21 @@ def main():
         "--repeat",
         type=int,
         default=1,
-        help="선택한 시나리오(또는 전체)를 N회 반복 — XC Discovery/학습용 (기본 1)",
+        help="선택한 시나리오(또는 --learn-benign)를 N회 반복 (기본 1)",
+    )
+    parser.add_argument(
+        "--batch",
+        choices=("benign", "attack", "all"),
+        default=None,
+        help=(
+            "일괄 세트: benign=정상 학습, attack=비정상(BOLA/이상), all=전체. "
+            "--scenario 와 함께 쓰지 않음. 예: --batch benign --repeat 300"
+        ),
+    )
+    parser.add_argument(
+        "--learn-benign",
+        action="store_true",
+        help="(--batch benign 과 동일) XC 학습용 정상 세트",
     )
     parser.add_argument(
         "--quiet-http",
@@ -609,7 +639,17 @@ def main():
         return
 
     repeats = max(1, int(args.repeat))
-    selected = args.scenario or list(SCENARIOS)
+    batch = args.batch or ("benign" if args.learn_benign else None)
+    if batch and args.scenario:
+        raise SystemExit("--batch/--learn-benign 과 --scenario 는 함께 쓰지 마세요")
+    if batch == "benign":
+        selected = list(BATCH_BENIGN_SCENARIOS)
+    elif batch == "attack":
+        selected = list(BATCH_ATTACK_SCENARIOS)
+    elif batch == "all":
+        selected = list(SCENARIOS)
+    else:
+        selected = args.scenario or list(SCENARIOS)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     stamp = int(time.time())
     out_path = args.out or (OUT_DIR / f"bola-run-{stamp}.jsonl")
