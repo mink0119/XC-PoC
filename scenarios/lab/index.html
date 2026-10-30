@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BOLA Attacker Lab (local)</title>
+  <title>BOLA 시나리오 실행기 (로컬)</title>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
   <style>
     :root {
@@ -17,7 +17,6 @@
       --accent-dim: #115e59;
       --benign: #4ade80;
       --bola: #fb7185;
-      --warn: #fbbf24;
       --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
       --sans: "IBM Plex Sans", "Segoe UI", sans-serif;
     }
@@ -38,7 +37,7 @@
       margin: 0 auto;
     }
     header h1 { margin: 0 0 6px; font-size: 1.45rem; letter-spacing: -0.02em; }
-    header .lead { margin: 0; color: var(--muted); max-width: 70ch; }
+    header .lead { margin: 0; color: var(--muted); max-width: 72ch; }
     .badge {
       display: inline-block;
       margin-bottom: 10px;
@@ -48,15 +47,13 @@
       color: var(--accent);
       font-size: 0.75rem;
       font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
     }
     .layout {
       max-width: 1280px;
       margin: 0 auto;
       padding: 12px 24px 48px;
       display: grid;
-      grid-template-columns: 240px 1fr;
+      grid-template-columns: 260px 1fr;
       gap: 14px;
     }
     @media (max-width: 900px) {
@@ -76,7 +73,19 @@
       color: var(--muted);
       font-weight: 600;
     }
-    .scenario-list { display: grid; gap: 6px; }
+    .side-hint {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin: 0 0 10px;
+      line-height: 1.4;
+    }
+    .scenario-list {
+      display: grid;
+      gap: 6px;
+      max-height: min(70vh, 640px);
+      overflow: auto;
+      padding-right: 2px;
+    }
     .scenario-list button {
       appearance: none;
       width: 100%;
@@ -88,14 +97,23 @@
       padding: 10px 11px;
       font: inherit;
       cursor: pointer;
+      overflow: visible;
     }
     .scenario-list button:hover { border-color: #3d4f6a; }
     .scenario-list button.active {
       border-color: var(--accent);
       box-shadow: inset 0 0 0 1px var(--accent-dim);
     }
-    .scenario-list .name { font-weight: 600; display: block; }
-    .scenario-list .meta { color: var(--muted); font-size: 0.78rem; margin-top: 2px; }
+    .scenario-list .name {
+      font-weight: 600;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 6px;
+      line-height: 1.35;
+    }
+    .scenario-list .name-text { flex: 1 1 120px; }
+    .scenario-list .meta { color: var(--muted); font-size: 0.75rem; margin-top: 4px; display: block; }
     .tag {
       display: inline-block;
       padding: 1px 7px;
@@ -108,7 +126,7 @@
     .main-col { display: grid; gap: 14px; }
     .options .row {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
       gap: 12px;
       align-items: start;
     }
@@ -133,13 +151,27 @@
       color: var(--muted);
       line-height: 1.4;
     }
-    .toggle-block {
+    .opt-slot[hidden] { display: none !important; }
+    .scenario-opts {
       margin-top: 12px;
       padding: 12px;
       border: 1px solid var(--line);
       border-radius: 10px;
       background: var(--panel-2);
     }
+    .scenario-opts[hidden] { display: none !important; }
+    .scenario-opts > .label {
+      font-size: 0.75rem;
+      color: var(--accent);
+      font-weight: 600;
+      margin: 0 0 10px;
+    }
+    .empty-opts {
+      margin: 0;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+    .toggle-block { margin-top: 12px; }
     .toggle {
       display: flex;
       gap: 10px;
@@ -173,6 +205,15 @@
     .status { color: var(--muted); font-size: 0.88rem; }
     .detail h3 { margin: 0 0 6px; font-size: 1.15rem; }
     .detail .desc { color: var(--muted); margin: 0 0 12px; }
+    .why {
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border-left: 3px solid var(--accent-dim);
+      background: #0b1220;
+      border-radius: 0 8px 8px 0;
+      color: #cbd5e1;
+      font-size: 0.88rem;
+    }
     .split {
       display: grid;
       grid-template-columns: 1.1fr 0.9fr;
@@ -209,7 +250,7 @@
       color: #cbd5e1;
       line-height: 1.55;
     }
-    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+    .pill-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; align-items: center; }
     .pill {
       border: 1px solid var(--line);
       border-radius: 999px;
@@ -242,95 +283,97 @@
       font-family: var(--mono);
       font-size: 0.72rem;
     }
-    .arch {
-      font-size: 0.82rem;
-      color: var(--muted);
-      margin: 8px 0 0;
-    }
   </style>
 </head>
 <body>
   <header>
-    <div class="badge">Local attacker · not on Pet Shop host</div>
-    <h1>BOLA Attacker Lab</h1>
+    <div class="badge">로컬 PC에서 실행 · Pet Shop은 대상 서버</div>
+    <h1>BOLA 시나리오 실행기</h1>
     <p class="lead">
-      이 페이지는 <strong>로컬 PC</strong>에서 실행합니다.
-      <code>192.168.47.81</code> 은 Pet Shop(대상 API)만 제공합니다.
-      시나리오를 고르면 예상 흐름·예시가 보이고, 실행 시 브라우저가 로컬에서 대상 API로 요청을 보냅니다.
+      왼쪽에서 시나리오를 고르면, <strong>그 시나리오에 필요한 설정만</strong> 보입니다.
+      실행하면 이 PC 브라우저가 대상 API(<code>Target</code>)로 요청을 보냅니다.
     </p>
-    <p class="arch">로컬 UI/CLI → HTTP → Pet Shop API (192.168.47.81) · 방어는 XC에서만</p>
   </header>
 
   <div class="layout">
     <aside class="panel">
-      <h2>Attack type</h2>
+      <h2>시나리오</h2>
+      <p class="side-hint">무엇을 보내볼지 고르세요. 설정은 선택한 항목에만 맞춰 바뀝니다.</p>
       <div class="scenario-list" id="scenarioList"></div>
     </aside>
 
     <div class="main-col">
       <section class="panel options">
-        <h2>Options</h2>
+        <h2>공통 · 대상 서버</h2>
         <div class="row">
-          <label class="field">
-            <strong>Target Base URL</strong>
+          <label class="field" style="grid-column: 1 / -1; max-width: 520px;">
+            <strong>대상 서버 주소 (Pet Shop)</strong>
             <input id="base" type="text" value="http://192.168.47.81" />
-            <span class="opt-help">대상 Pet Shop 주소. 로컬이 아니라 공격 대상 서버입니다. health 확인에 사용됩니다.</span>
-          </label>
-          <label class="field">
-            <strong>순환 ID 개수</strong>
-            <input id="cyclicIds" type="number" min="1" max="500" value="264" />
-            <span class="opt-help"><code>operator_cyclic</code> 전용. 1–500. ≤264면 IP 2개 교대, 265+면 IP 1개로 스케일 스트레스.</span>
-          </label>
-          <label class="field">
-            <strong>순환 샘플 수</strong>
-            <input id="cyclicSample" type="number" min="1" max="200" value="12" />
-            <span class="opt-help">순환형에서 실제로 보낼 GET 횟수. ID 개수와 달라도 됩니다(모듈로 순환).</span>
-          </label>
-          <label class="field">
-            <strong>고정형 샘플 수</strong>
-            <input id="fixedSample" type="number" min="1" max="50" value="6" />
-            <span class="opt-help"><code>operator_fixed</code> 전용. 같은 customer_id로 IP만 바꿔 보내는 횟수.</span>
-          </label>
-          <label class="field">
-            <strong>열거 개수</strong>
-            <input id="enumCount" type="number" min="1" max="100" value="10" />
-            <span class="opt-help"><code>id_enumeration</code> 전용. 연속 order ID를 몇 개까지 훑을지.</span>
+            <span class="opt-help">공격 UI 주소가 아닙니다. 트래픽을 보낼 Pet Shop URL입니다. 예: http://192.168.47.81</span>
           </label>
         </div>
-        <div class="toggle-block">
-          <label class="toggle">
-            <input id="operatorCode" type="checkbox" />
-            <span>
-              <strong>토큰에 operator_code 포함</strong>
-              <span class="opt-help" style="display:block;margin-top:4px">
-                <b>OFF (기본)</b> = 현재 환경. JWT에 운영자 claim 없음 → 같은 IP·다계정이 XC에 오탐으로 보일 수 있음.<br />
-                <b>ON</b> = 미래형. JWT에 <code>operator_code</code>를 넣어 운영자 신원이 있을 때 XC가 어떻게 묶는지 비교.
-                순환/고정/재발급 시나리오의 토큰 발급에만 영향. 교차 BOLA·열거에는 쓰이지 않습니다.
+
+        <div class="scenario-opts" id="scenarioOpts">
+          <p class="label" id="scenarioOptsLabel">이 시나리오 설정</p>
+          <div class="row" id="scenarioOptsRow">
+            <label class="field opt-slot" data-opt="cyclicIds" hidden>
+              <strong>몇 개 계정을 돌아가며 쓸까</strong>
+              <input id="cyclicIds" type="number" min="1" max="500" value="264" />
+              <span class="opt-help">1–500. 264 이하면 IP 2개를 번갈아 쓰고, 그보다 많으면 IP 1개로 몰아서 보냅니다.</span>
+            </label>
+            <label class="field opt-slot" data-opt="cyclicSample" hidden>
+              <strong>몇 번 조회할까</strong>
+              <input id="cyclicSample" type="number" min="1" max="200" value="12" />
+              <span class="opt-help">실제로 보낼 조회 횟수입니다. 계정 수보다 작아도 됩니다(처음부터 다시 순환).</span>
+            </label>
+            <label class="field opt-slot" data-opt="fixedSample" hidden>
+              <strong>IP를 몇 번 바꿔 볼까</strong>
+              <input id="fixedSample" type="number" min="1" max="50" value="6" />
+              <span class="opt-help">같은 계정으로, 서로 다른 출발 IP를 몇 번 붙여 보낼지입니다.</span>
+            </label>
+            <label class="field opt-slot" data-opt="enumCount" hidden>
+              <strong>주문 번호를 몇 개까지 올려볼까</strong>
+              <input id="enumCount" type="number" min="1" max="100" value="10" />
+              <span class="opt-help">1, 2, 3… 순으로 주문 ID를 몇 개까지 조회할지입니다.</span>
+            </label>
+          </div>
+          <div class="toggle-block opt-slot" data-opt="operatorCode" hidden>
+            <label class="toggle">
+              <input id="operatorCode" type="checkbox" />
+              <span>
+                <strong>토큰에 운영자 표시(operator_code) 넣기</strong>
+                <span class="opt-help" style="display:block;margin-top:4px">
+                  <b>끄기(기본)</b> — 지금처럼 토큰에 운영자 정보가 없음. 같은 IP에서 여러 계정을 쓰면 XC가 공격으로 오인할 수 있음(오탐 검토).<br />
+                  <b>켜기</b> — 토큰에 운영자 코드를 넣음. “운영자라고 알려 줬을 때” XC가 다르게 보는지 비교할 때 사용.
+                </span>
               </span>
-            </span>
-          </label>
+            </label>
+          </div>
+          <p class="empty-opts" id="noScenarioOpts" hidden>이 시나리오는 추가 설정이 없습니다. 대상 서버만 맞으면 바로 실행하면 됩니다.</p>
         </div>
+
         <div class="actions">
-          <button type="button" class="run" id="runBtn">이 시나리오 실행 (로컬 → 대상)</button>
-          <button type="button" class="ghost" id="runAllBtn">전체 실행</button>
-          <button type="button" class="ghost" id="pingBtn">대상 health 확인</button>
-          <span class="status" id="status">시나리오를 선택한 뒤 실행하세요</span>
+          <button type="button" class="run" id="runBtn">이 시나리오 실행</button>
+          <button type="button" class="ghost" id="runAllBtn">전체 시나리오 실행</button>
+          <button type="button" class="ghost" id="pingBtn">대상 서버 연결 확인</button>
+          <span class="status" id="status">시나리오를 선택하세요</span>
         </div>
       </section>
 
       <section class="panel detail" id="detail">
         <h3 id="detailTitle">시나리오를 선택하세요</h3>
         <p class="desc" id="detailDesc"></p>
+        <p class="why" id="whyBox" hidden></p>
         <div class="split">
           <div class="box">
-            <h4>Expected flow</h4>
+            <h4>흐름</h4>
             <div class="mermaid" id="flowChart">flowchart LR
-              A[Select scenario] --> B[Run locally]
+              A[시나리오 선택] --> B[로컬에서 실행]
             </div>
           </div>
           <div class="box">
-            <h4>Example behavior</h4>
-            <pre class="example" id="exampleBox">왼쪽에서 attack type을 고르면 예시가 표시됩니다.</pre>
+            <h4>예시 (이렇게 동작합니다)</h4>
+            <pre class="example" id="exampleBox">왼쪽에서 시나리오를 고르면 예시가 나옵니다.</pre>
           </div>
         </div>
       </section>
@@ -341,8 +384,8 @@
           <table>
             <thead>
               <tr>
-                <th>#</th><th>scenario</th><th>expected</th><th>status</th>
-                <th>IP</th><th>customer</th><th>op</th><th>path</th>
+                <th>#</th><th>시나리오</th><th>기대</th><th>HTTP</th>
+                <th>출발 IP</th><th>계정</th><th>운영자</th><th>경로</th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
@@ -351,18 +394,18 @@
       </section>
 
       <section class="panel">
-        <div class="pill-row" style="align-items:center">
-          <h2 style="margin:0">HTTP request / response log</h2>
-          <span class="pill" id="httpCount">0 exchanges</span>
+        <div class="pill-row">
+          <h2 style="margin:0">요청·응답 기록</h2>
+          <span class="pill" id="httpCount">0건</span>
           <button type="button" class="ghost" id="dlSummary">요약 JSONL</button>
           <button type="button" class="ghost" id="dlHttp">HTTP JSONL</button>
-          <button type="button" class="ghost" id="clearLog">로그 비우기</button>
+          <button type="button" class="ghost" id="clearLog">기록 비우기</button>
         </div>
-        <p class="opt-help">PoC 검증용. 로컬에서 보낸 요청·받은 응답을 기록합니다.</p>
+        <p class="opt-help">PoC 검증용. 로컬에서 보낸 요청과 받은 응답을 남깁니다.</p>
         <div class="scroll tall">
           <table>
             <thead>
-              <tr><th>seq</th><th>scenario</th><th>expected</th><th>request</th><th>response</th></tr>
+              <tr><th>순번</th><th>시나리오</th><th>기대</th><th>요청</th><th>응답</th></tr>
             </thead>
             <tbody id="httpRows"></tbody>
           </table>
@@ -376,6 +419,7 @@
 
     const ORDERS_PER_CUSTOMER = 2;
     const PAYMENTS_PER_CUSTOMER = 1;
+    const EXPECTED_LABEL = { benign: "정상", bola: "BOLA" };
 
     function orderIdFor(customerId, slot = 0) {
       return (customerId - 1) * ORDERS_PER_CUSTOMER + slot + 1;
@@ -395,121 +439,139 @@
       if (!Number.isFinite(n)) return lo;
       return Math.min(hi, Math.max(lo, Math.trunc(n)));
     }
+    function expectedTag(expected) {
+      return `<span class="tag ${expected}">${EXPECTED_LABEL[expected] || expected}</span>`;
+    }
 
+    // options: which inputs this scenario uses (besides always-visible target URL)
     const SCENARIO_META = {
       public_catalog: {
-        title: "공개 카탈로그",
+        title: "정상 · 공개 상품 보기",
+        short: "로그인 없이 공개 API만",
         expected: "benign",
-        desc: "인증 없이 공개 상품·카테고리 API만 호출합니다. XC 베이스라인·정상 트래픽 대조용입니다.",
+        options: [],
+        desc: "상품·카테고리처럼 누구나 볼 수 있는 API만 호출합니다.",
+        why: "XC에 “정상 공개 트래픽” 기준선을 남길 때 씁니다. 설정할 값이 없습니다.",
         flow: `flowchart LR
-          L[Local browser] -->|GET /products etc| T[Pet Shop]
-          T -->|200 public JSON| L
-          L --> Lab[expected benign]`,
+          L[이 PC] -->|공개 GET| T[Pet Shop]
+          T -->|200| L
+          L --> R[기대: 정상]`,
         example: `GET /api/v1/products
 GET /api/v1/categories
-GET /api/v1/brands
-→ HTTP 200, expected=benign
-(토큰·X-Forwarded-For 없음)`,
+…
+→ HTTP 200, 기대=정상
+(토큰 없음)`,
       },
       self_order: {
-        title: "본인 주문",
+        title: "정상 · 내 주문 보기",
+        short: "자기 계정 주문만 조회",
         expected: "benign",
-        desc: "customer_id=410 토큰으로 자기 주문만 조회합니다. 정상 인증 사용자 패턴입니다.",
+        options: [],
+        desc: "로그인(토큰) 후, 본인 주문만 조회합니다.",
+        why: "정상적인 로그인 사용자 패턴입니다. 추가 설정 없이 실행하면 됩니다.",
         flow: `flowchart TD
-          L[Local] -->|POST /auth/token customer=410| T[Pet Shop]
-          L -->|GET /orders/own + Bearer| T
-          T -->|200 own order| L
-          L --> Lab[expected benign]`,
-        example: `POST /api/v1/auth/token  { customer_id: 410 }
-GET /api/v1/orders/{order_of_410}
-  Authorization: Bearer …
-  X-Forwarded-For: 192.0.2.60
-→ owner==caller → benign, HTTP 200`,
+          L[이 PC] -->|토큰 발급 계정 410| T[Pet Shop]
+          L -->|내 주문 GET| T
+          T -->|200| L
+          L --> R[기대: 정상]`,
+        example: `토큰: customer_id=410
+GET /api/v1/orders/(410의 주문)
+→ 내 것 → 정상, HTTP 200`,
       },
       operator_cyclic: {
-        title: "순환형 멀티계정",
+        title: "오탐 검토 · 여러 계정 돌아가며 조회",
+        short: "운영자가 여러 고객 대신 조회하는 패턴",
         expected: "benign",
-        desc: "운영자가 배정된 여러 계정을 돌아가며, 각 계정의 자기 주문을 조회합니다. ID 개수·operator_code ON/OFF로 현재형 오탐 vs 미래형을 비교합니다.",
+        options: ["cyclicIds", "cyclicSample", "operatorCode"],
+        desc: "여러 고객 계정을 번갈아 쓰되, 각 계정의 “자기 주문”만 봅니다. 공격이 아니라 정상 대행 조회에 가깝습니다.",
+        why: "같은 IP에서 계정이 많이 바뀌면 XC가 BOLA로 오인할 수 있습니다. 운영자 표시(ON/OFF)를 바꿔 가며 비교하세요.",
         flow: `flowchart TD
-          L[Local] --> T1[token customer=1]
-          T1 --> G1[GET /orders/1 IP A]
-          G1 --> T2[token customer=2]
-          T2 --> G2[GET /orders/3 IP B]
-          G2 --> Tn[… cyclic-ids 만큼 순환]
-          Tn --> Lab[each self-order → benign]
-          note[operator_code OFF: no op claim / ON: OP_CYCLE_A]`,
-        example: `cyclic-ids=3, sample=3, operator_code OFF
-token customer_id=1 → GET /orders/1  IP 203.0.113.10
-token customer_id=2 → GET /orders/3  IP 203.0.113.11
-token customer_id=3 → GET /orders/5  IP 203.0.113.10
-JWT에 operator_code 없음 → XC 오탐 후보(다계정+공유 IP)`,
+          L[이 PC] --> A[계정1 토큰 → 주문1]
+          A --> B[계정2 토큰 → 주문2]
+          B --> C[계정N …]
+          C --> R[각 요청 기대: 정상]`,
+        example: `계정 3개, 조회 3번, 운영자 표시 OFF
+계정1 → 주문1  (IP …10)
+계정2 → 주문3  (IP …11)
+계정3 → 주문5  (IP …10)
+→ 모두 자기 주문 = 정상
+단, XC에는 “다계정+공유 IP”로 오탐 후보`,
       },
       operator_fixed: {
-        title: "고정형 + IP 변경",
+        title: "오탐 검토 · 같은 계정, IP만 바꿈",
+        short: "계정 고정 + 출발 IP만 변경",
         expected: "benign",
-        desc: "계정 ID는 고정하고 소스 IP만 바꿉니다. 정상 운영/프록시 패턴이 XC에 이상 징후로 잡히는지 보는 오탐 후보입니다.",
+        options: ["fixedSample", "operatorCode"],
+        desc: "계정은 하나로 고정하고, 요청에 붙는 출발 IP만 바꿉니다.",
+        why: "프록시·NAT처럼 IP가 자주 바뀌는 정상 패턴이 XC에 이상으로 잡히는지 볼 때 씁니다.",
         flow: `flowchart LR
-          L[Local] --> Tok[token fixed customer]
-          Tok --> A[GET order IP .1]
-          Tok --> B[GET order IP .2]
-          Tok --> C[GET order IP .n]
-          C --> Lab[benign self-access]`,
-        example: `customer_id=405 고정
-GET /orders/…  X-Forwarded-For: 198.51.100.1
-GET /orders/…  X-Forwarded-For: 198.51.100.2
-… (fixed-sample 회)
-같은 계정 · 다른 IP → expected=benign`,
+          L[이 PC] --> T[같은 계정 토큰]
+          T --> A[조회 IP1]
+          T --> B[조회 IP2]
+          T --> C[조회 IPn]
+          C --> R[기대: 정상]`,
+        example: `계정 405 고정
+같은 주문 조회 + IP …1
+같은 주문 조회 + IP …2
+…
+→ 자기 주문 = 정상`,
       },
       access_token_reissue: {
-        title: "access_token 재발급",
+        title: "정상 · 하루마다 토큰 새로 받기",
+        short: "24시간마다 access_token 재발급",
         expected: "benign",
-        desc: "하루에 한 번 access_token을 재발급하는 OAuth 패턴(iat/exp만 변경, TTL 24h). 토큰 문자열이 일자마다 달라야 합니다.",
+        options: ["operatorCode"],
+        desc: "OAuth처럼 하루에 한 번 access_token을 다시 발급받고(내용은 iat/exp만 다름), 그 토큰으로 자기 주문을 봅니다.",
+        why: "토큰 문자열이 날짜마다 달라지는지 확인하고, 재발급 패턴이 XC에 이상해 보이지 않는지 봅니다.",
         flow: `flowchart TD
-          L[Local] --> D0[token issued_at day0]
-          D0 --> G0[GET own order]
-          G0 --> D1[token issued_at day0+24h]
-          D1 --> G1[GET own order]
-          G1 --> D2[token day0+48h]
-          D2 --> Lab[3 distinct tokens · benign]`,
-        example: `issued_at = 2026-10-28 09:00 UTC
-issued_at = +86400
-issued_at = +172800
-→ accessToken 문자열 3개 모두 다름
-각 토큰으로 자기 주문 GET → benign`,
+          L[이 PC] --> D0[day0 토큰]
+          D0 --> G0[내 주문]
+          G0 --> D1[day1 토큰]
+          D1 --> G1[내 주문]
+          G1 --> D2[day2 토큰]
+          D2 --> R[토큰 3개 서로 다름 · 정상]`,
+        example: `day0 / day0+24h / day0+48h 토큰 발급
+→ 문자열 3개가 모두 달라야 함
+각 토큰으로 내 주문 GET → 정상`,
       },
       cross_customer_bola: {
-        title: "교차 계정 BOLA",
+        title: "공격 · 남의 주문·결제 조회",
+        short: "내 토큰으로 다른 사람 데이터 보기 (BOLA)",
         expected: "bola",
-        desc: "공격자 토큰으로 타 계정의 주문·결제·프로필·진료기록을 조회합니다. Pet Shop은 소유권을 검사하지 않아 200을 반환합니다.",
+        options: [],
+        desc: "내 계정 토큰으로 다른 사람의 주문, 결제, 프로필, 진료기록을 요청합니다.",
+        why: "Pet Shop은 소유권을 안 막아서 200이 나옵니다. XC가 BOLA로 잡는지 보는 핵심 공격 시나리오입니다. 추가 설정 없음.",
         flow: `flowchart TD
-          L[Local attacker] -->|token customer=410| T[Pet Shop]
-          L -->|GET /orders/1 owner=1| T
-          L -->|GET /payments/1| T
-          L -->|GET /customers/1| T
-          L -->|GET /pets/1/medical-records| T
-          T -->|200 leak| L
-          L --> Lab[expected bola]`,
-        example: `token: customer_id=410 (no operator_code)
-GET /api/v1/orders/1              → owner 1 → bola 200
-GET /api/v1/payments/1            → bola 200
-GET /api/v1/customers/1           → bola 200
-GET /api/v1/pets/1/medical-records → bola 200`,
+          L[이 PC 공격자] -->|내 토큰 410| T[Pet Shop]
+          L -->|남의 주문1| T
+          L -->|남의 결제1| T
+          L -->|남의 프로필| T
+          T -->|200 유출| L
+          L --> R[기대: BOLA]`,
+        example: `토큰: 내 계정 410
+GET /orders/1     → 남(1)의 것 → BOLA 200
+GET /payments/1   → BOLA 200
+GET /customers/1  → BOLA 200
+GET /pets/1/medical-records → BOLA 200`,
       },
       id_enumeration: {
-        title: "ID 열거",
+        title: "공격 · 주문번호 연속 조회",
+        short: "주문 ID를 1,2,3… 으로 올려 보기 (BOLA)",
         expected: "bola",
-        desc: "공격자 토큰으로 order ID를 연속 증가시키며 열거합니다. 타인 객체에 대해 bola 라벨이 붙습니다.",
+        options: ["enumCount"],
+        desc: "내 토큰으로 주문 ID를 1부터 올려 가며 연속 조회합니다.",
+        why: "객체 ID를 추측·열거하는 BOLA 패턴입니다. “몇 개까지”만 정하면 됩니다.",
         flow: `flowchart LR
-          L[Local] --> Tok[token attacker 410]
-          Tok --> E1[GET /orders/1]
-          E1 --> E2[GET /orders/2]
-          E2 --> En[GET /orders/n]
-          En --> Lab[foreign IDs → bola]`,
-        example: `token customer_id=410
-GET /orders/1 → owner 1 → bola
-GET /orders/2 → owner 1 → bola
-GET /orders/3 → owner 2 → bola
-… enum-count 개`,
+          L[이 PC] --> T[내 토큰]
+          T --> A[주문1]
+          A --> B[주문2]
+          B --> C[주문N]
+          C --> R[남의 것이면 BOLA]`,
+        example: `토큰: 계정 410
+GET /orders/1 → 남 → BOLA
+GET /orders/2 → 남 → BOLA
+GET /orders/3 → 남 → BOLA
+… (설정한 개수만큼)`,
       },
     };
 
@@ -625,8 +687,7 @@ GET /orders/3 → owner 2 → bola
     RUNNERS.public_catalog = async function (c, rows) {
       currentScenario = "public_catalog";
       const paths = ["/api/v1/products", "/api/v1/categories", "/api/v1/brands", "/api/v1/foods", "/api/v1/toys"];
-      for (let i = 0; i < 5; i++) {
-        const path = paths[i];
+      for (const path of paths) {
         const { status } = await loggedFetch("GET", c.base + path, { expected: "benign", meta: { kind: "catalog" } });
         push(rows, { scenario: "public_catalog", expected: "benign", status, source_ip: "192.0.2.50", customer_id: null, operator_code: null, path });
       }
@@ -690,7 +751,7 @@ GET /orders/3 → owner 2 → bola
         const { status } = await getPrivate(c.base, token, path, "198.51.100.10", expected);
         push(rows, { scenario: "access_token_reissue", expected, status, source_ip: "198.51.100.10", customer_id: customerId, operator_code: tokenOp, path });
       }
-      if (seen.size !== 3) throw new Error("access token 문자열이 일자마다 달라야 합니다");
+      if (seen.size !== 3) throw new Error("날짜마다 access token 문자열이 달라야 합니다");
     };
 
     RUNNERS.cross_customer_bola = async function (c, rows) {
@@ -737,8 +798,22 @@ GET /orders/3 → owner 2 → bola
         const { svg } = await mermaid.render(id, text);
         el.innerHTML = svg;
       } catch (err) {
-        el.textContent = text + "\n\n(render error: " + err.message + ")";
+        el.textContent = text + "\n\n(표시 오류: " + err.message + ")";
       }
+    }
+
+    function syncOptions(id) {
+      const meta = SCENARIO_META[id];
+      const needed = new Set(meta.options || []);
+      document.querySelectorAll(".opt-slot").forEach((el) => {
+        const key = el.getAttribute("data-opt");
+        el.hidden = !needed.has(key);
+      });
+      const hasAny = needed.size > 0;
+      document.getElementById("noScenarioOpts").hidden = hasAny;
+      document.getElementById("scenarioOptsLabel").hidden = !hasAny;
+      document.getElementById("scenarioOptsLabel").textContent =
+        "이 시나리오 설정 · " + meta.title;
     }
 
     function selectScenario(id) {
@@ -748,11 +823,20 @@ GET /orders/3 → owner 2 → bola
       });
       const meta = SCENARIO_META[id];
       document.getElementById("detailTitle").innerHTML =
-        meta.title + ' <span class="tag ' + meta.expected + '">' + meta.expected + "</span>";
+        meta.title + " " + expectedTag(meta.expected);
       document.getElementById("detailDesc").textContent = meta.desc;
+      const why = document.getElementById("whyBox");
+      why.hidden = !meta.why;
+      why.textContent = meta.why ? "왜 쓰나: " + meta.why : "";
       document.getElementById("exampleBox").textContent = meta.example;
+      syncOptions(id);
       renderFlow(meta.flow);
-      document.getElementById("status").textContent = "선택됨: " + id + " · 로컬에서 대상 API로 실행 가능";
+      document.getElementById("status").textContent =
+        "선택: " + meta.title + " · 아래 설정 확인 후 실행";
+    }
+
+    function scenarioTitle(id) {
+      return (SCENARIO_META[id] && SCENARIO_META[id].title) || id;
     }
 
     function render(rows) {
@@ -760,8 +844,8 @@ GET /orders/3 → owner 2 → bola
       document.getElementById("rows").innerHTML = rows.map((r, i) => `
         <tr>
           <td>${i + 1}</td>
-          <td>${r.scenario}</td>
-          <td><span class="tag ${r.expected}">${r.expected}</span></td>
+          <td>${scenarioTitle(r.scenario)}</td>
+          <td>${expectedTag(r.expected)}</td>
           <td>${r.status}</td>
           <td>${r.source_ip || ""}</td>
           <td>${r.customer_id ?? ""}</td>
@@ -771,13 +855,15 @@ GET /orders/3 → owner 2 → bola
       const benign = rows.filter((r) => r.expected === "benign").length;
       const bola = rows.filter((r) => r.expected === "bola").length;
       const c = cfg();
+      const meta = SCENARIO_META[selectedId];
+      const showOp = meta && meta.options.includes("operatorCode");
       document.getElementById("summary").innerHTML = `
-        <span class="pill">total ${rows.length}</span>
-        <span class="pill">benign ${benign}</span>
-        <span class="pill">bola ${bola}</span>
-        <span class="pill">http ${httpLog.entries.length}</span>
-        <span class="pill">operator_code ${c.operatorCodeEnabled ? "ON" : "OFF"}</span>
-        <span class="pill">target ${c.base}</span>`;
+        <span class="pill">합계 ${rows.length}</span>
+        <span class="pill">정상 ${benign}</span>
+        <span class="pill">BOLA ${bola}</span>
+        <span class="pill">HTTP ${httpLog.entries.length}</span>
+        ${showOp ? `<span class="pill">운영자 표시 ${c.operatorCodeEnabled ? "ON" : "OFF"}</span>` : ""}
+        <span class="pill">대상 ${c.base}</span>`;
     }
 
     function preview(value) {
@@ -790,22 +876,22 @@ GET /orders/3 → owner 2 → bola
     }
 
     function renderHttp() {
-      document.getElementById("httpCount").textContent = httpLog.entries.length + " exchanges";
+      document.getElementById("httpCount").textContent = httpLog.entries.length + "건";
       const latest = httpLog.entries.slice(-80);
       document.getElementById("httpRows").innerHTML = latest.map((e) => `
         <tr>
           <td>${e.seq}</td>
-          <td>${e.scenario || "—"}</td>
-          <td>${e.expected ? `<span class="tag ${e.expected}">${e.expected}</span>` : "—"}</td>
+          <td>${e.scenario ? scenarioTitle(e.scenario) : "—"}</td>
+          <td>${e.expected ? expectedTag(e.expected) : "—"}</td>
           <td>
             <div><code>${e.request.method} ${e.request.url}</code></div>
-            <details><summary>request detail</summary>
+            <details><summary>요청 상세</summary>
               <pre class="ex-body">${escapeHtml(preview({ headers: e.request.headers, body: e.request.body }))}</pre>
             </details>
           </td>
           <td>
             <div><strong>${e.response.status}</strong></div>
-            <details><summary>response detail</summary>
+            <details><summary>응답 상세</summary>
               <pre class="ex-body">${escapeHtml(preview({ headers: e.response.headers, body: e.response.body }))}</pre>
             </details>
           </td>
@@ -837,17 +923,17 @@ GET /orders/3 → owner 2 → bola
       const rows = [];
       const statusEl = document.getElementById("status");
       try {
-        statusEl.textContent = "대상 health 확인 중…";
+        statusEl.textContent = "대상 서버 확인 중…";
         currentScenario = null;
         const health = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
-        if (!health.ok) throw new Error("health " + health.status + " — Target Base URL을 확인하세요");
+        if (!health.ok) throw new Error("연결 실패 HTTP " + health.status + " — 대상 서버 주소를 확인하세요");
         const ids = all ? ORDER : [selectedId];
         for (const id of ids) {
-          statusEl.textContent = "로컬 실행 중: " + id + " → " + c.base;
+          statusEl.textContent = "실행 중: " + scenarioTitle(id);
           await RUNNERS[id](c, rows);
           render(rows);
         }
-        statusEl.textContent = "완료 · labeled " + rows.length + " / HTTP " + httpLog.entries.length + " (from local → " + c.base + ")";
+        statusEl.textContent = "완료 · 결과 " + rows.length + "건 / HTTP " + httpLog.entries.length + "건 → " + c.base;
       } catch (err) {
         statusEl.textContent = "실패: " + (err && err.message ? err.message : err);
         render(rows);
@@ -862,8 +948,8 @@ GET /orders/3 → owner 2 → bola
       list.innerHTML = ORDER.map((id) => {
         const m = SCENARIO_META[id];
         return `<button type="button" data-id="${id}">
-          <span class="name">${m.title}</span>
-          <span class="meta"><span class="tag ${m.expected}">${m.expected}</span> ${id}</span>
+          <span class="name">${expectedTag(m.expected)}<span class="name-text">${m.title}</span></span>
+          <span class="meta">${m.short}</span>
         </button>`;
       }).join("");
       list.addEventListener("click", (ev) => {
@@ -878,10 +964,10 @@ GET /orders/3 → owner 2 → bola
         try {
           const r = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
           document.getElementById("status").textContent = r.ok
-            ? "대상 OK: " + c.base + "/health"
-            : "대상 응답 " + r.status;
+            ? "대상 서버 OK: " + c.base
+            : "대상 서버 응답 " + r.status;
         } catch (err) {
-          document.getElementById("status").textContent = "대상 연결 실패: " + err.message;
+          document.getElementById("status").textContent = "대상 서버 연결 실패: " + err.message;
         }
       });
       document.getElementById("dlSummary").addEventListener("click", () => {
@@ -896,7 +982,7 @@ GET /orders/3 → owner 2 → bola
         lastSummaryRows = [];
         render([]);
         renderHttp();
-        document.getElementById("status").textContent = "로그 비움";
+        document.getElementById("status").textContent = "기록 비움";
       });
       selectScenario(selectedId);
     }
