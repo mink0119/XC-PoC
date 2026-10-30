@@ -445,6 +445,34 @@
 
       <section class="panel">
         <div class="pill-row">
+          <h2 style="margin:0">JWT 디코드 (토큰 claim)</h2>
+          <span class="pill" id="tokenCount">0개</span>
+        </div>
+        <p class="opt-help">
+          발급·사용한 accessToken 의 payload 를 Base64url 디코드한 값입니다.
+          소유권 비교에 쓰는 <code>customer_id</code> / <code>operator_code</code> / <code>iat</code>·<code>exp</code> 를 여기서 확인하세요.
+          (서명 검증 없이 payload 만 표시)
+        </p>
+        <div class="scroll" id="tokenPanel">
+          <p class="opt-help" id="tokenEmpty">아직 토큰이 없습니다. 시나리오를 실행하면 여기에 쌓입니다.</p>
+          <table hidden id="tokenTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>시나리오</th>
+                <th>customer_id</th>
+                <th>operator_code</th>
+                <th>iat → exp</th>
+                <th>전체 claim</th>
+              </tr>
+            </thead>
+            <tbody id="tokenRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="pill-row">
           <h2 style="margin:0">요청·응답 기록</h2>
           <span class="pill" id="httpCount">0건</span>
           <button type="button" class="ghost" id="dlSummary">요약 JSONL</button>
@@ -651,6 +679,7 @@ Authorization: Bearer (410)
     }
 
     const httpLog = { seq: 0, entries: [] };
+    const tokenLog = { seq: 0, entries: [] };
     let lastSummaryRows = [];
     let currentScenario = null;
     let selectedId = "cross_customer_bola";
@@ -662,6 +691,67 @@ Authorization: Bearer (410)
       if (!headers || !headers.forEach) return out;
       headers.forEach((v, k) => { out[k] = v; });
       return out;
+    }
+
+    function b64urlToJson(part) {
+      try {
+        const pad = "=".repeat((4 - (part.length % 4)) % 4);
+        const b64 = (part + pad).replace(/-/g, "+").replace(/_/g, "/");
+        const json = decodeURIComponent(
+          Array.prototype.map.call(atob(b64), (c) =>
+            "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
+          ).join("")
+        );
+        return JSON.parse(json);
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function decodeJwt(token) {
+      if (!token || typeof token !== "string") return null;
+      const parts = token.split(".");
+      if (parts.length !== 3) return null;
+      return {
+        header: b64urlToJson(parts[0]),
+        payload: b64urlToJson(parts[1]),
+        signaturePreview: parts[2].slice(0, 16) + "…",
+      };
+    }
+
+    function bearerFromHeaders(headers) {
+      if (!headers) return null;
+      const raw = headers.Authorization || headers.authorization;
+      if (!raw || typeof raw !== "string") return null;
+      const m = raw.match(/^Bearer\s+(.+)$/i);
+      return m ? m[1].trim() : null;
+    }
+
+    function formatEpoch(sec) {
+      if (sec == null || !Number.isFinite(Number(sec))) return "—";
+      try {
+        return new Date(Number(sec) * 1000).toISOString().replace(".000Z", "Z");
+      } catch (_) {
+        return String(sec);
+      }
+    }
+
+    function noteToken(token, scenario, source) {
+      const decoded = decodeJwt(token);
+      if (!decoded || !decoded.payload) return null;
+      tokenLog.seq += 1;
+      const entry = {
+        seq: tokenLog.seq,
+        ts: new Date().toISOString(),
+        scenario: scenario || currentScenario,
+        source: source || "token",
+        tokenPreview: token.slice(0, 24) + "…",
+        header: decoded.header,
+        payload: decoded.payload,
+      };
+      tokenLog.entries.push(entry);
+      renderTokens();
+      return entry;
     }
 
     function addExchange(payload) {
@@ -684,6 +774,21 @@ Authorization: Bearer (410)
         },
       };
       if (payload.meta) entry.meta = payload.meta;
+
+      const reqToken = bearerFromHeaders(entry.request.headers);
+      if (reqToken) {
+        const d = decodeJwt(reqToken);
+        if (d) entry.request.jwt = d;
+      }
+      const respToken = entry.response.body && entry.response.body.accessToken;
+      if (typeof respToken === "string") {
+        const d = decodeJwt(respToken);
+        if (d) {
+          entry.response.jwt = d;
+          noteToken(respToken, entry.scenario, "issued");
+        }
+      }
+
       httpLog.entries.push(entry);
       renderHttp();
       return entry;
@@ -989,6 +1094,51 @@ Authorization: Bearer (410)
       return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
 
+    function renderTokens() {
+      document.getElementById("tokenCount").textContent = tokenLog.entries.length + "개";
+      const empty = document.getElementById("tokenEmpty");
+      const table = document.getElementById("tokenTable");
+      if (!tokenLog.entries.length) {
+        empty.hidden = false;
+        table.hidden = true;
+        document.getElementById("tokenRows").innerHTML = "";
+        return;
+      }
+      empty.hidden = true;
+      table.hidden = false;
+      const latest = tokenLog.entries.slice(-40);
+      document.getElementById("tokenRows").innerHTML = latest.map((t) => {
+        const p = t.payload || {};
+        return `<tr>
+          <td>${t.seq}</td>
+          <td>${t.scenario ? scenarioTitle(t.scenario) : "—"}<div class="opt-help">${t.source}</div></td>
+          <td><code>${p.customer_id ?? "—"}</code></td>
+          <td><code>${p.operator_code ?? "—"}</code></td>
+          <td class="opt-help">${formatEpoch(p.iat)}<br/>→ ${formatEpoch(p.exp)}</td>
+          <td>
+            <details>
+              <summary>claim JSON</summary>
+              <div class="ex-panel">
+                <p class="ex-heading">JWT payload (디코드)</p>
+                <p class="ex-heading-sub">서명 검증 없이 payload 만 표시. 소유권 비교에 쓰는 필드 확인용.</p>
+                <pre class="ex-body">${escapeHtml(preview({ header: t.header, payload: t.payload, tokenPreview: t.tokenPreview }))}</pre>
+              </div>
+            </details>
+          </td>
+        </tr>`;
+      }).join("");
+    }
+
+    function jwtBlock(label, jwt) {
+      if (!jwt || !jwt.payload) return "";
+      const p = jwt.payload;
+      return `<div class="ex-panel" style="margin-top:8px">
+        <p class="ex-heading">${label}</p>
+        <p class="ex-heading-sub">customer_id=${p.customer_id ?? "—"} · operator_code=${p.operator_code ?? "—"} · iat=${formatEpoch(p.iat)} · exp=${formatEpoch(p.exp)}</p>
+        <pre class="ex-body">${escapeHtml(preview(p))}</pre>
+      </div>`;
+    }
+
     function renderHttp() {
       document.getElementById("httpCount").textContent = httpLog.entries.length + "건";
       const latest = httpLog.entries.slice(-80);
@@ -999,24 +1149,26 @@ Authorization: Bearer (410)
           <td>${e.expected ? expectedTag(e.expected) : "—"}</td>
           <td>
             <div><code>${e.request.method} ${e.request.url}</code></div>
-            <details open>
+            <details>
               <summary>요청 내용 펼치기</summary>
               <div class="ex-panel">
                 <p class="ex-heading">요청 헤더 · 본문</p>
                 <p class="ex-heading-sub">이 PC가 대상 서버로 보낸 HTTP 요청의 headers / body 입니다.</p>
                 <pre class="ex-body">${escapeHtml(preview({ headers: e.request.headers, body: e.request.body }))}</pre>
               </div>
+              ${jwtBlock("요청 JWT claim (디코드)", e.request.jwt)}
             </details>
           </td>
           <td>
             <div><strong>HTTP ${e.response.status}</strong></div>
-            <details open>
+            <details>
               <summary>응답 내용 펼치기</summary>
               <div class="ex-panel">
                 <p class="ex-heading">응답 헤더 · 본문</p>
                 <p class="ex-heading-sub">대상 서버가 돌려준 HTTP 응답의 headers / body 입니다.</p>
                 <pre class="ex-body">${escapeHtml(preview({ headers: e.response.headers, body: e.response.body }))}</pre>
               </div>
+              ${jwtBlock("발급된 accessToken claim (디코드)", e.response.jwt)}
             </details>
           </td>
         </tr>`).join("");
@@ -1110,11 +1262,15 @@ Authorization: Bearer (410)
       document.getElementById("clearLog").addEventListener("click", () => {
         httpLog.entries = [];
         httpLog.seq = 0;
+        tokenLog.entries = [];
+        tokenLog.seq = 0;
         lastSummaryRows = [];
         render([]);
         renderHttp();
+        renderTokens();
         document.getElementById("status").textContent = "기록 비움";
       });
+      renderTokens();
       selectScenario(selectedId);
     }
 
