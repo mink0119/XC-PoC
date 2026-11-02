@@ -1,0 +1,18 @@
+# Pet Shop — XC BOLA PoC target API
+# Usage (on 192.168.47.81 or any host):
+#   cd petshop && docker compose up -d --build
+#   curl -s http://127.0.0.1/health
+
+services:
+  petshop:
+    build: .
+    image: petshop-bola:latest
+    container_name: petshop-api
+    restart: unless-stopped
+    ports:
+      - "${PETSHOP_PORT:-80}:80"
+    environment:
+      PORT: "80"
+      # 1 = normal API ownership check (403 on foreign objects)
+      # 0 / unset = vulnerable (default, XC BOLA PoC)
+      ENFORCE_OWNERSHIP: "${ENFORCE_OWNERSHIP:-0}"

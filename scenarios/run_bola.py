@@ -629,7 +629,12 @@ def main():
     parser.add_argument(
         "--quiet-http",
         action="store_true",
-        help="반복 학습 시 HTTP 상세 JSONL을 쓰지 않음 (카운트만 summary에)",
+        help="HTTP 상세 JSONL을 쓰지 않음 (카운트만). --http-log 보다 우선",
+    )
+    parser.add_argument(
+        "--http-log",
+        action="store_true",
+        help="반복(--repeat)/배치에서도 HTTP 상세 JSONL을 남김 (차단·응답 확인용)",
     )
     parser.add_argument("--out", type=Path, default=None, help="요약 JSONL 경로")
     args = parser.parse_args()
@@ -655,7 +660,13 @@ def main():
     out_path = args.out or (OUT_DIR / f"bola-run-{stamp}.jsonl")
     http_path = out_path.with_name(out_path.stem + ".http.jsonl")
 
-    quiet_http = bool(args.quiet_http or repeats > 1)
+    # Default: quiet when repeating; --http-log forces detail; --quiet-http always quiet
+    if args.quiet_http:
+        quiet_http = True
+    elif args.http_log:
+        quiet_http = False
+    else:
+        quiet_http = repeats > 1
     session = requests.Session()
     logger = ExchangeLogger(quiet=quiet_http)
     ctx = Ctx(session, args.base, logger, enforce_ownership=args.enforce_ownership)

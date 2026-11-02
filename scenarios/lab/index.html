@@ -397,7 +397,7 @@
           <label class="field learn-field">
             <strong>세트 반복 횟수</strong>
             <input id="batchRounds" type="number" min="1" max="2000" value="300" />
-            <span class="opt-help" id="batchRoundsHelp">XC 학습(정상)은 보통 300회. HTTP 상세 로그는 남기지 않습니다.</span>
+            <span class="opt-help" id="batchRoundsHelp">XC 학습(정상)은 보통 300회. 로그는 아래 옵션에서 켜/끌 수 있습니다.</span>
           </label>
           <div class="row batch-tuning" id="batchTuning">
             <label class="field" data-batch-opt="cyclic">
@@ -423,6 +423,18 @@
               <span>
                 <strong>토큰에 operator_code 넣기</strong>
                 <span class="opt-help" style="display:block;margin-top:4px">P2 정상 패턴에 적용.</span>
+              </span>
+            </label>
+          </div>
+          <div class="toggle-block">
+            <label class="toggle">
+              <input id="batchHttpLog" type="checkbox" />
+              <span>
+                <strong>HTTP 요청/응답 로그 남기기</strong>
+                <span class="opt-help" style="display:block;margin-top:4px">
+                  <b>끄기(기본)</b> — 카운트만 (대량 학습에 적합).<br />
+                  <b>켜기</b> — 아래 HTTP 로그 패널에 request/response를 쌓음 (차단·응답 코드 확인용). 횟수가 크면 브라우저가 느려질 수 있습니다.
+                </span>
               </span>
             </label>
           </div>
@@ -811,8 +823,9 @@ Authorization: Bearer (410)
     let selectedId = "batch_benign";
     let busy = false;
     let flowRender = 0;
-    /** XC 학습 반복: 상세 HTTP/JWT 로그를 쌓지 않고 카운트만 */
+    /** 일괄 실행: quiet=상세 로그 생략, deferRender=로그는 쌓되 UI는 가끔만 갱신 */
     let learnQuiet = false;
+    let learnDeferRender = false;
     let learnAbort = false;
     let learnHttpCount = 0;
     let learnOkCount = 0;
@@ -932,7 +945,11 @@ Authorization: Bearer (410)
       }
 
       httpLog.entries.push(entry);
-      renderHttp();
+      if (learnDeferRender) {
+        if (httpLog.seq % 25 === 0) renderHttp();
+      } else {
+        renderHttp();
+      }
       return entry;
     }
 
@@ -1217,8 +1234,8 @@ Authorization: Bearer (410)
         document.getElementById("batchRounds").value = String(meta.defaultRounds);
         document.getElementById("batchRoundsHelp").textContent =
           meta.mode === "benign"
-            ? "XC 학습용. 보통 300회. HTTP 상세 로그는 남기지 않습니다."
-            : "비정상·전체는 1~수십이면 충분한 경우가 많습니다. HTTP 상세 로그는 남기지 않습니다.";
+            ? "XC 학습용. 보통 300회. HTTP 로그는 아래 옵션에서 ON/OFF."
+            : "비정상·전체는 1~수십이면 충분한 경우가 많습니다. HTTP 로그는 아래 옵션에서 ON/OFF.";
         syncBatchOpts(meta);
         document.getElementById("detailTitle").innerHTML =
           meta.title + " " + expectedTag(meta.expected);
@@ -1387,6 +1404,7 @@ Authorization: Bearer (410)
       document.getElementById("pingBtn").disabled = v;
       document.getElementById("pingBtnSingle").disabled = v;
       document.getElementById("batchRounds").disabled = v;
+      document.getElementById("batchHttpLog").disabled = v;
       document.getElementById("stopLearnBtn").disabled = !(v && batch);
     }
 
@@ -1429,8 +1447,10 @@ Authorization: Bearer (410)
         document.getElementById("status").textContent = "실행할 시나리오 세트가 비어 있습니다";
         return;
       }
+      const httpLogOn = document.getElementById("batchHttpLog").checked;
       setBusy(true, { batch: true });
-      learnQuiet = true;
+      learnQuiet = !httpLogOn;
+      learnDeferRender = httpLogOn;
       learnAbort = false;
       learnHttpCount = 0;
       learnOkCount = 0;
@@ -1441,7 +1461,9 @@ Authorization: Bearer (410)
       const t0 = Date.now();
       let finishedRounds = 0;
       try {
-        statusEl.textContent = "준비 · 대상 서버 확인… (" + plan.label + " ×" + rounds + ")";
+        statusEl.textContent =
+          "준비 · 대상 서버 확인… (" + plan.label + " ×" + rounds +
+          ", HTTP로그 " + (httpLogOn ? "ON" : "OFF") + ")";
         currentScenario = null;
         const health = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
         if (!health.ok) throw new Error("연결 실패 HTTP " + health.status + " — 대상 서버 주소를 확인하세요");
@@ -1450,28 +1472,39 @@ Authorization: Bearer (410)
           const rows = [];
           for (const id of plan.ids) {
             if (learnAbort) break;
+            const httpShown = httpLogOn ? httpLog.entries.length : learnHttpCount;
             statusEl.textContent =
               r + "/" + rounds + " · " + plan.label + " · " + scenarioTitle(id) +
-              " · HTTP " + learnHttpCount + " (ok " + learnOkCount + " / fail " + learnFailCount + ")";
+              " · HTTP " + httpShown +
+              (httpLogOn ? "" : " (ok " + learnOkCount + " / fail " + learnFailCount + ")");
             await RUNNERS[id](c, rows);
             await sleep(0);
           }
           if (!learnAbort) finishedRounds = r;
+          if (httpLogOn) renderHttp();
           if (r % 10 === 0 || r === rounds) await sleep(0);
+        }
+        if (httpLogOn) {
+          renderHttp();
+          renderTokens();
         }
         const sec = ((Date.now() - t0) / 1000).toFixed(1);
         const verb = learnAbort ? "중지" : "완료";
+        const httpShown = httpLogOn ? httpLog.entries.length : learnHttpCount;
         statusEl.textContent =
           verb + " · " + plan.label + " ×" + finishedRounds +
-          " · HTTP " + learnHttpCount +
-          " (ok " + learnOkCount + " / fail " + learnFailCount + ") · " + sec + "s → " + c.base;
+          " · HTTP " + httpShown +
+          (httpLogOn ? " (로그 ON)" : " (ok " + learnOkCount + " / fail " + learnFailCount + ", 로그 OFF)") +
+          " · " + sec + "s → " + c.base;
       } catch (err) {
+        if (httpLogOn) renderHttp();
         statusEl.textContent =
           "실패 (" + finishedRounds + "/" + rounds + "): " +
           (err && err.message ? err.message : err) +
-          " · HTTP " + learnHttpCount;
+          " · HTTP " + (httpLogOn ? httpLog.entries.length : learnHttpCount);
       } finally {
         learnQuiet = false;
+        learnDeferRender = false;
         learnAbort = false;
         currentScenario = null;
         setBusy(false);
