@@ -569,7 +569,7 @@ def main():
         description="Pet Shop BOLA scenario runner",
         epilog="GUI: http://<petshop-host>/lab  |  docs: ../docs/SCENARIOS.md",
     )
-    parser.add_argument("--base", default="http://192.168.47.81", help="Pet Shop base URL")
+    parser.add_argument("--base", default="http://ncurity-test.local", help="Pet Shop base URL")
     parser.add_argument(
         "--scenario",
         action="append",

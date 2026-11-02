@@ -234,6 +234,29 @@
     }
     .batch-tuning { margin-top: 10px; }
     [data-batch-opt][hidden] { display: none !important; }
+    .http-filters {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+      margin: 0 0 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #0b1220;
+    }
+    .http-filters .field { margin: 0; min-width: 120px; }
+    .http-filters select,
+    .http-filters input[type="text"] {
+      width: 100%;
+      margin-top: 4px;
+      padding: 8px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--panel-2);
+      color: var(--ink);
+      font: inherit;
+    }
     .batch-opts {
       margin: 0 0 12px;
       padding: 10px 12px;
@@ -372,8 +395,8 @@
         <div class="row">
           <label class="field" style="grid-column: 1 / -1; max-width: 520px;">
             <strong>대상 서버 주소 (Pet Shop)</strong>
-            <input id="base" type="text" value="http://192.168.47.81" />
-            <span class="opt-help">트래픽을 보낼 Pet Shop URL (가능하면 XC VIP).</span>
+            <input id="base" type="text" value="http://ncurity-test.local" />
+            <span class="opt-help">트래픽을 보낼 Pet Shop URL (가능하면 XC VIP). 기본: http://ncurity-test.local</span>
           </label>
         </div>
         <div class="toggle-block">
@@ -558,7 +581,29 @@
           <button type="button" class="ghost" id="dlHttp">HTTP JSONL</button>
           <button type="button" class="ghost" id="clearLog">기록 비우기</button>
         </div>
-        <p class="opt-help">PoC 검증용. 로컬에서 보낸 요청과 받은 응답을 남깁니다.</p>
+        <p class="opt-help">PoC 검증용. 보낸 요청과 받은 응답을 남깁니다. 아래 필터로 응답코드·URL 경로를 좁힐 수 있습니다.</p>
+        <div class="http-filters">
+          <label class="field">
+            <strong>응답 코드</strong>
+            <select id="httpFilterStatus">
+              <option value="">전체</option>
+              <option value="2xx">2xx</option>
+              <option value="3xx">3xx</option>
+              <option value="4xx">4xx</option>
+              <option value="5xx">5xx</option>
+              <option value="200">200</option>
+              <option value="401">401</option>
+              <option value="403">403</option>
+              <option value="404">404</option>
+              <option value="429">429</option>
+            </select>
+          </label>
+          <label class="field" style="flex:1; min-width:180px">
+            <strong>URL 경로 포함</strong>
+            <input id="httpFilterPath" type="text" placeholder="예: /accounts/inquire 또는 orders" />
+          </label>
+          <button type="button" class="ghost" id="httpFilterClear" style="align-self:flex-end">필터 초기화</button>
+        </div>
         <div class="scroll tall">
           <table>
             <thead>
@@ -799,7 +844,7 @@ Authorization: Bearer (410)
       const checked = (batchEl, singleEl) =>
         document.getElementById(batch ? batchEl : singleEl).checked;
       return {
-        base: (document.getElementById("base").value || "http://192.168.47.81").replace(/\/$/, ""),
+        base: (document.getElementById("base").value || "http://ncurity-test.local").replace(/\/$/, ""),
         cyclicIds: num("cyclicIds", "cyclicIdsSingle", 1, 500),
         cyclicSample: num("cyclicSample", "cyclicSampleSingle", 1, 200),
         fixedSample: num("fixedSample", "fixedSampleSingle", 1, 50),
@@ -1352,10 +1397,54 @@ Authorization: Bearer (410)
       </div>`;
     }
 
+    function statusMatchesFilter(status, filter) {
+      if (!filter) return true;
+      const s = Number(status);
+      if (!Number.isFinite(s)) return false;
+      if (filter === "2xx") return s >= 200 && s < 300;
+      if (filter === "3xx") return s >= 300 && s < 400;
+      if (filter === "4xx") return s >= 400 && s < 500;
+      if (filter === "5xx") return s >= 500 && s < 600;
+      return String(s) === String(filter);
+    }
+
+    function pathFromUrl(url) {
+      try {
+        const u = new URL(url, "http://dummy.local");
+        return u.pathname + u.search;
+      } catch (_) {
+        return String(url || "");
+      }
+    }
+
+    function filteredHttpEntries() {
+      const statusFilter = (document.getElementById("httpFilterStatus") || {}).value || "";
+      const pathFilter = ((document.getElementById("httpFilterPath") || {}).value || "").trim().toLowerCase();
+      return httpLog.entries.filter((e) => {
+        if (!statusMatchesFilter(e.response && e.response.status, statusFilter)) return false;
+        if (pathFilter) {
+          const path = pathFromUrl(e.request && e.request.url).toLowerCase();
+          const full = String((e.request && e.request.url) || "").toLowerCase();
+          if (!path.includes(pathFilter) && !full.includes(pathFilter)) return false;
+        }
+        return true;
+      });
+    }
+
     function renderHttp() {
-      document.getElementById("httpCount").textContent = httpLog.entries.length + "건";
-      const latest = httpLog.entries.slice(-80);
-      document.getElementById("httpRows").innerHTML = latest.map((e) => `
+      const filtered = filteredHttpEntries();
+      const total = httpLog.entries.length;
+      const shown = filtered.slice(-80);
+      document.getElementById("httpCount").textContent =
+        filtered.length === total
+          ? total + "건"
+          : filtered.length + "건 표시 / 전체 " + total + "건";
+      if (!shown.length) {
+        document.getElementById("httpRows").innerHTML =
+          `<tr><td colspan="5" style="color:var(--muted)">조건에 맞는 기록이 없습니다.</td></tr>`;
+        return;
+      }
+      document.getElementById("httpRows").innerHTML = shown.map((e) => `
         <tr>
           <td>${e.seq}</td>
           <td>${e.scenario ? scenarioTitle(e.scenario) : "—"}</td>
@@ -1568,7 +1657,8 @@ Authorization: Bearer (410)
         downloadJsonl("bola-lab-" + Date.now() + ".jsonl", lastSummaryRows);
       });
       document.getElementById("dlHttp").addEventListener("click", () => {
-        downloadJsonl("bola-lab-" + Date.now() + ".http.jsonl", httpLog.entries);
+        const rows = filteredHttpEntries();
+        downloadJsonl("bola-lab-" + Date.now() + ".http.jsonl", rows.length ? rows : httpLog.entries);
       });
       document.getElementById("clearLog").addEventListener("click", () => {
         httpLog.entries = [];
@@ -1580,6 +1670,13 @@ Authorization: Bearer (410)
         renderHttp();
         renderTokens();
         document.getElementById("status").textContent = "기록 비움";
+      });
+      document.getElementById("httpFilterStatus").addEventListener("change", () => renderHttp());
+      document.getElementById("httpFilterPath").addEventListener("input", () => renderHttp());
+      document.getElementById("httpFilterClear").addEventListener("click", () => {
+        document.getElementById("httpFilterStatus").value = "";
+        document.getElementById("httpFilterPath").value = "";
+        renderHttp();
       });
       renderTokens();
       selectScenario(selectedId);
