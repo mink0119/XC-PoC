@@ -64,8 +64,9 @@ OOB vs Inline 역할은 README/시나리오 안내 문구로만 명시한다.
 [F5 XC]  Discovery · BOLA · 이상행위 분석
 ```
 
-- 공격 GUI는 **절대** Pet Shop 호스트에 두지 않는다. `/lab`은 안내만.
-- 대상 서버는 CORS를 허용해 로컬 브라우저 실행을 지원한다.
+- 공격 GUI의 기본 위치는 **로컬**이다. Pet Shop의 `/lab`은 안내만.
+- 공유 PoC 호스트에서는 **별도 포트(기본 8765) Docker**로 lab UI를 띄울 수 있다. Pet Shop(API :80)과 프로세스를 섞지 않는다.
+- 대상 서버는 CORS를 허용해 브라우저에서 lab → API 호출을 지원한다.
 
 ## 5. 시나리오 맵 (P1–P6)
 

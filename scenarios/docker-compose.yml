@@ -1,0 +1,22 @@
+# Attack / learn lab UI — run on PoC host (e.g. 192.168.47.81:8765)
+#   cd scenarios && docker compose up -d --build
+#   open http://192.168.47.81:8765
+# Pet Shop API stays on :80 (see ../petshop/docker-compose.yml)
+
+services:
+  attack-lab:
+    build: .
+    image: xc-poc-attack-lab:latest
+    container_name: xc-poc-attack-lab
+    restart: unless-stopped
+    ports:
+      - "${LAB_PORT:-8765}:8765"
+    environment:
+      LAB_HOST: "0.0.0.0"
+      LAB_PORT: "8765"
+    # docker compose logs -f attack-lab  → access + startup logs
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"

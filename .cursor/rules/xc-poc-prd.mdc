@@ -13,7 +13,8 @@ Before changing this repo, read and follow `docs/PRD.md`.
 - **Pet Shop** = target API. Default **vulnerable** (no ownership) for XC BOLA PoC (HTTP 200 leaks).
   - Normal-API mode: `ENFORCE_OWNERSHIP=1` or header `X-Enforce-Ownership: 1` → JWT subject vs in-memory owner → 401/403.
   - Lab UI toggle / CLI `--enforce-ownership` must stay in sync with this dual mode.
-- **Attack UI/CLI** runs **locally** (`scenarios/`). Never host the attacker lab as the primary UX on the Pet Shop host (`/lab` = redirect/notice only).
+- **Attack UI/CLI** defaults to **local** (`scenarios/`). Pet Shop `/lab` = redirect/notice only.
+  - Optional: same PoC host via Docker on **port 8765** (`attack-lab` container) — never merge into Pet Shop :80.
 - **Do not** put real customer/securities product names or real Open API paths into product UI/code. Map concepts onto Pet Shop (`customer_id`, `order`, `accountNo`).
 
 ## Scenario groups (keep separated)
