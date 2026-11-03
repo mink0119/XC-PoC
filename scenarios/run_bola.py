@@ -242,6 +242,44 @@ def run_self_orders(ctx: Ctx, rows, operator_code_enabled: bool):
     )
 
 
+def run_matched_order_learn(ctx: Ctx, rows, customer_count: int, operator_code_enabled: bool):
+    """XC learning: each JWT customer_id only GETs that customer's own order IDs.
+
+    Builds a clear subject↔private-object baseline (no foreign IDs, no operator claim).
+    """
+    ctx.scenario = "matched_order_learn"
+    if customer_count < 1 or customer_count > bola_model.CUSTOMER_COUNT:
+        raise SystemExit(f"--matched-customers 는 1..{bola_model.CUSTOMER_COUNT} 범위여야 합니다")
+    source_ip = "192.0.2.70"
+    for customer_id in range(1, customer_count + 1):
+        token = issue(ctx, customer_id, None)
+        for slot in range(bola_model.ORDERS_PER_CUSTOMER):
+            order_id = bola_model.order_id_for(customer_id, slot)
+            owner = bola_model.customer_id_for_order(order_id)
+            path = f"/api/v1/orders/{order_id}"
+            expected = bola_model.expected_label(customer_id, None, owner)
+            if expected != "benign" or owner != customer_id:
+                raise SystemExit(
+                    f"matched_order_learn 내부 불일치: customer={customer_id} order={order_id} owner={owner}"
+                )
+            status, _body = get_private(ctx, token, path, source_ip, expected=expected)
+            record(
+                rows,
+                scenario="matched_order_learn",
+                expected=expected,
+                method="GET",
+                path=path,
+                status=status,
+                source_ip=source_ip,
+                operator_code=None,
+                customer_id=customer_id,
+                issued_at=None,
+                owner_customer_id=owner,
+                notes="JWT customer_id와 소유 주문만 매칭 조회",
+                operator_code_enabled=operator_code_enabled,
+            )
+
+
 def run_cyclic_operator(ctx: Ctx, rows, sample: int, id_count: int, operator_code_enabled: bool):
     ctx.scenario = "operator_cyclic"
     if id_count < 1 or id_count > MAX_CYCLIC_IDS:
@@ -515,6 +553,7 @@ def summarize(rows: list[dict]) -> dict:
 SCENARIOS = (
     "public_catalog",
     "self_order",
+    "matched_order_learn",
     "operator_cyclic",
     "operator_fixed",
     "access_token_reissue",
@@ -524,10 +563,13 @@ SCENARIOS = (
     "abnormal_probe",
 )
 
+DEFAULT_MATCHED_CUSTOMERS = 40
+
 # Batch sets (lab UI: 정상 / 비정상 / 전체)
 BATCH_BENIGN_SCENARIOS = (
     "public_catalog",
     "self_order",
+    "matched_order_learn",
     "operator_cyclic",
     "operator_fixed",
     "access_token_reissue",
@@ -546,6 +588,8 @@ def run_selected(ctx: Ctx, rows, name: str, args, operator_code_enabled: bool):
         run_catalog(ctx, rows, args.catalog, operator_code_enabled)
     elif name == "self_order":
         run_self_orders(ctx, rows, operator_code_enabled)
+    elif name == "matched_order_learn":
+        run_matched_order_learn(ctx, rows, args.matched_customers, operator_code_enabled)
     elif name == "operator_cyclic":
         run_cyclic_operator(ctx, rows, args.cyclic, args.cyclic_ids, operator_code_enabled)
     elif name == "operator_fixed":
@@ -599,6 +643,16 @@ def main():
         help=f"순환에 쓸 계정 수 1..{MAX_CYCLIC_IDS} (기본 {DEFAULT_CYCLIC_IDS})",
     )
     parser.add_argument("--fixed", type=int, default=16, help="고정형 샘플 수")
+    parser.add_argument(
+        "--matched-customers",
+        type=int,
+        default=DEFAULT_MATCHED_CUSTOMERS,
+        help=(
+            f"matched_order_learn: JWT customer_id와 소유 주문만 조회할 계정 수 "
+            f"1..{bola_model.CUSTOMER_COUNT} (기본 {DEFAULT_MATCHED_CUSTOMERS}; 계정당 주문 "
+            f"{bola_model.ORDERS_PER_CUSTOMER}건)"
+        ),
+    )
     parser.add_argument("--enum", type=int, default=20, help="ID 열거 샘플 수")
     parser.add_argument(
         "--enforce-ownership",

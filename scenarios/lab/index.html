@@ -439,6 +439,11 @@
               <strong>ID 열거 개수</strong>
               <input id="enumCount" type="number" min="1" max="100" value="10" />
             </label>
+            <label class="field" data-batch-opt="matched">
+              <strong>매칭 학습 계정 수</strong>
+              <input id="matchedCustomers" type="number" min="1" max="600" value="40" />
+              <span class="opt-help">customer_id 1..N, 각 소유 주문만 (계정당 2건)</span>
+            </label>
           </div>
           <div class="toggle-block" data-batch-opt="operator">
             <label class="toggle">
@@ -491,6 +496,11 @@
             <label class="field opt-slot" data-opt="enumCount" hidden>
               <strong>주문 번호를 몇 개까지 올려볼까</strong>
               <input id="enumCountSingle" type="number" min="1" max="100" value="10" />
+            </label>
+            <label class="field opt-slot" data-opt="matchedCustomers" hidden>
+              <strong>몇 개 계정으로 매칭 학습할까</strong>
+              <input id="matchedCustomersSingle" type="number" min="1" max="600" value="40" />
+              <span class="opt-help">customer_id 1..N. 각 토큰은 자기 주문(슬롯 2개)만 GET.</span>
             </label>
           </div>
           <div class="toggle-block opt-slot" data-opt="operatorCode" hidden>
@@ -685,6 +695,22 @@
           L --> R[기대: 정상]`,
         example: `토큰 customer_id=410 → GET 내 주문 → 정상`,
       },
+      matched_order_learn: {
+        group: "baseline", groupLabel: "기본 · 베이스라인",
+        title: "정상 · customer↔주문 매칭 학습",
+        short: "다수 계정 × 각자 소유 주문만",
+        expected: "benign", options: ["matchedCustomers"],
+        desc: "customer_id 1..N 각각 토큰을 발급하고, 그 계정 소유 주문 ID만 GET합니다. 타인 주문은 넣지 않습니다.",
+        why: "XC가 Path 주문 ID를 Private Resource로 보고, JWT customer_id와 짝을 학습하도록 정상 기준선을 쌓습니다. self_order(단일 410)보다 매칭 샘플이 많습니다.",
+        flow: `flowchart TD
+          C1[토큰 cid=1] -->|GET 소유주문| T[Pet Shop]
+          C2[토큰 cid=2] -->|GET 소유주문| T
+          CN[토큰 cid=N] -->|GET 소유주문| T
+          T --> R[전부 정상 · Private 매칭 학습]`,
+        example: `cid=1 → /orders/1,/orders/2
+cid=2 → /orders/3,/orders/4
+… (소유 주문만, 교차 없음)`,
+      },
       cross_customer_bola: {
         group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
         title: "P1a · Path로 남의 데이터 조회",
@@ -791,13 +817,13 @@ Authorization: Bearer (410)
         title: "정상 · XC 학습",
         short: "정상 세트 × N (BOLA 제외)",
         expected: "benign",
-        options: ["cyclic", "fixed", "operator"],
+        options: ["cyclic", "fixed", "operator", "matched"],
         defaultRounds: 300,
         desc: "정상(benign) 시나리오 전체를 반복해 XC Discovery·BOLA baseline을 쌓습니다. P1 BOLA·열거·이상행위는 포함하지 않습니다.",
         why: "학습 트래픽은 정상 패턴만 써야 identity↔객체 기준선이 선명해집니다.",
         flow: `flowchart TD
           B[정상 세트] -->|×N| T[Pet Shop / XC]
-          B --> C[카탈로그·내주문·순환·고정·토큰재발급]`,
+          B --> C[카탈로그·내주문·매칭학습·순환·고정·토큰재발급]`,
         example: "",
       },
       batch_attack: {
@@ -823,7 +849,7 @@ Authorization: Bearer (410)
         title: "전체 시나리오",
         short: "정상+비정상 전부 × N",
         expected: "bola",
-        options: ["cyclic", "fixed", "enum", "operator"],
+        options: ["cyclic", "fixed", "enum", "operator", "matched"],
         defaultRounds: 1,
         desc: "정상과 비정상 시나리오를 모두 한 바퀴로 돌립니다. 데모·회귀용입니다. XC 순수 학습용은 아닙니다.",
         why: "한 번에 전체 패턴을 재현할 때 사용합니다.",
@@ -849,6 +875,7 @@ Authorization: Bearer (410)
         cyclicSample: num("cyclicSample", "cyclicSampleSingle", 1, 200),
         fixedSample: num("fixedSample", "fixedSampleSingle", 1, 50),
         enumCount: num("enumCount", "enumCountSingle", 1, 100),
+        matchedCustomers: num("matchedCustomers", "matchedCustomersSingle", 1, 600),
         operatorCodeEnabled: checked("operatorCode", "operatorCodeSingle"),
         enforceOwnership: document.getElementById("enforceOwnership").checked,
       };
@@ -1072,6 +1099,31 @@ Authorization: Bearer (410)
       const expected = expectedLabel(customerId, null, customerId);
       const { status } = await getPrivate(c.base, token, path, "192.0.2.60", expected);
       push(rows, { scenario: "self_order", expected, status, source_ip: "192.0.2.60", customer_id: customerId, operator_code: null, path });
+    };
+
+    RUNNERS.matched_order_learn = async function (c, rows) {
+      currentScenario = "matched_order_learn";
+      const n = c.matchedCustomers;
+      const sourceIp = "192.0.2.70";
+      for (let customerId = 1; customerId <= n; customerId++) {
+        const token = await issueToken(c.base, customerId, null);
+        for (let slot = 0; slot < ORDERS_PER_CUSTOMER; slot++) {
+          const orderId = orderIdFor(customerId, slot);
+          const owner = customerIdForOrder(orderId);
+          const path = "/api/v1/orders/" + orderId;
+          const expected = expectedLabel(customerId, null, owner);
+          const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+          push(rows, {
+            scenario: "matched_order_learn",
+            expected,
+            status,
+            source_ip: sourceIp,
+            customer_id: customerId,
+            operator_code: null,
+            path,
+          });
+        }
+      }
     };
 
     RUNNERS.operator_cyclic = async function (c, rows) {

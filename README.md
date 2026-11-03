@@ -150,6 +150,23 @@ python3 run_bola.py --base http://192.168.47.81 --batch attack --repeat 1 --http
 
 ## XC 참고
 
+### Code Base Integration (코드 스캔)
+
+대상 API는 F5 공식 **Code Discovery** 지원 스택으로 고정한다 → **Python Flask (function-based views)**.  
+`petshop/flask_routes.py`의 `@app.route` 가 스캔 대상. TypeScript·미지원 프레임워크로 바꾸지 말 것.
+
+| Language | Frameworks (공식) |
+|----------|-------------------|
+| Python | Flask, Django (function-based views) |
+| Java | EE, Spring |
+| .NET | 7.0 / 6.0 / 5.0 / 3.1 |
+| JavaScript | Express, Hapi |
+| Go | Gin |
+
+SCM: GitHub / GitLab / Azure Repos (org 레벨). 상세·절차: [docs/PRD.md §11](docs/PRD.md) · [Setting Up API Discovery](https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/quickstart/api-security)
+
+### 기타
+
 - [Runtime API Security Detections — BOLA](https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/concepts/owasp-api-security)
 - [Import OpenAPI](https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/how-to/adv-security/import-openapi-spec)
 - [API Rate Limiting](https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/how-to/api-security/configure-api-rate-limiting)

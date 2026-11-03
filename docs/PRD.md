@@ -80,7 +80,7 @@ OOB vs Inline 역할은 README/시나리오 안내 문구로만 명시한다.
 | P2c | P2 오탐 | `access_token_reissue` | benign | 24h 토큰 재발급을 신규 공격자로 보지 않는가? |
 | P2d | P2 오탐 | `operator_code` 토글 | — | Claim 없을 때(현재) vs 있을 때(미래) 비교 |
 | P3a | P3 이상 | `abnormal_probe` | mixed | 정상 자기조회 후 타인 객체 급탐색을 구분하는가? |
-| — | baseline | `public_catalog`, `self_order` | benign | 베이스라인 |
+| — | baseline | `public_catalog`, `self_order`, `matched_order_learn` | benign | 베이스라인 · **JWT customer_id↔소유 주문** Private Resource 학습 |
 | P4–P6 | 문서 | — | — | Discovery·민감정보·Inline 차단은 XC/별도 Inline 환경. 랩은 민감 필드가 든 응답을 **제공**만 함 |
 
 ### 학습 기간
@@ -122,15 +122,50 @@ BOLA/행위 분석은 **학습 트래픽·시간이 필요**하다.
 3. OOB로 못 보는 기능은 Inline 필요라고 문서에 쓰고, 가짜로 “됨”이라고 하지 않는다.
 4. UI 카피·시나리오 키·README·SCENARIOS는 PRD와 모순되지 않게 맞춘다.
 
-## 11. 갭 대비 로드맵 (이 PRD 기준)
+## 11. F5 XC Code Base Integration (코드 스캔 Discovery) 정렬
+
+이후 PoC에서 **Code Base Integration → Discovery Source = Code Analysis** 를 검증한다.  
+대상 API(`petshop/`)는 공식 **Code Discovery 지원 언어·프레임워크**만 사용한다.
+
+공식 기준 ([Setting Up API Discovery](https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/quickstart/api-security) · Code Discovery):
+
+| Language | Frameworks |
+|----------|------------|
+| Java | EE, Spring |
+| .NET | 7.0, 6.0, 5.0, 3.1 |
+| **Python** | **Flask**, Django (**function-based views**만) |
+| JavaScript | Express, Hapi |
+| Go | Gin |
+
+추가 제약 (공식·지원 문서):
+
+- SCM: Azure Repos, GitHub (Standard/Enterprise), GitLab (Standard/Enterprise). 스캔은 **organization 레벨**.
+- **TypeScript 미지원** — Discovery Source에 Code가 안 붙는 대표 원인 ([K000150399](https://my.f5.com/manage/s/article/K000150399)).
+- Django는 **class-based views 제외** (function-based만).
+- 저장소 스캔은 **최대 수 시간~일 1회** 주기. 즉시 Code 소스가 안 뜬다고 미지원으로 단정하지 않는다.
+
+### 이 랩의 고정 선택
+
+| 항목 | 결정 |
+|------|------|
+| 대상 API 스택 | **Python + Flask + function-based `@app.route`** (`petshop/flask_routes.py`) |
+| 금지 | 대상 API를 FastAPI/Django CBV/Express-TS/Nest 등으로 바꿔 Code 스캔 비호환 만들기 |
+| 라우트 가시성 | 엔드포인트는 `@app.route(..., methods=[...])` 로 정적 스캔 가능해야 함 (thin wrapper → `invoke` 유지 가능) |
+| 스펙 병행 | OpenAPI(`/swagger.json`)는 Inventory·Import용. Code 스캔과 **별개** 소스 |
+| 검증 기대 | LB에 Code Base Integration + API Repositories 연결 후 Inventory에서 `Discovery Source`에 **Code Analysis** 포함 |
+
+트래픽 학습(BOLA/행위)과 Code Discovery는 **다른 Discovery Source**다. 둘 다 쓰되 혼동하지 않는다.
+
+## 12. 갭 대비 로드맵 (이 PRD 기준)
 
 | 상태 | 항목 |
 |------|------|
 | Done | 로컬 GUI/CLI, P1 path BOLA, P2 cyclic/fixed/token, operator_code, HTTP 로그 |
-| Now | PRD 고정, Body `accountNo` BOLA(P1b), P3 abnormal_probe, UI 그룹·학습 안내 |
-| Next | 민감정보 패턴용 응답 필드 보강, Discovery 대조용 endpoint 목록 export, Inline 체크리스트 문서 |
+| Now | PRD 고정, Body `accountNo` BOLA(P1b), P3 abnormal_probe, UI 그룹·학습 안내, **matched_order_learn**, Code Base Integration 스택 고정(Flask) |
+| Next | Code Base Integration 실연동 체크리스트(콘솔 단계·대기시간), 민감정보 패턴 응답 보강, Inline 체크리스트 문서 |
 
-## 12. 참고
+## 13. 참고
 
 - 내부: `docs/SCENARIOS.md`, `README.md`
-- F5: Runtime API Security / BOLA, BIG-IP OOB API Discovery (공식 문서 — 버전·지원 범위는 PoC 시점에 재확인)
+- F5: [Setting Up API Discovery](https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/quickstart/api-security) (Code Discovery 표), [Runtime API Security / BOLA](https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/concepts/owasp-api-security), [Import OpenAPI](https://docs.cloud.f5.com/docs-v2/web-app-and-api-protection/how-to/adv-security/import-openapi-spec)
+- 지원 범위는 PoC 시점에 공식 문서 재확인.

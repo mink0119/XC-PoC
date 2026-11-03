@@ -13,6 +13,7 @@ Before changing this repo, read and follow `docs/PRD.md`.
 - **Pet Shop** = target API. Default **vulnerable** (no ownership) for XC BOLA PoC (HTTP 200 leaks).
   - Normal-API mode: `ENFORCE_OWNERSHIP=1` or header `X-Enforce-Ownership: 1` → JWT subject vs in-memory owner → 401/403.
   - Lab UI toggle / CLI `--enforce-ownership` must stay in sync with this dual mode.
+- **Code Base Integration**: Pet Shop stack MUST stay on F5 Code Discovery–supported frameworks — **Python Flask function-based `@app.route`** (`flask_routes.py`). Do not migrate target API to TypeScript / FastAPI / Django CBV / unsupported stacks. See `docs/PRD.md` §11.
 - **Attack UI/CLI** defaults to **local** (`scenarios/`). Pet Shop `/lab` = redirect/notice only.
   - Optional: same PoC host via Docker on **port 8765** (`attack-lab` container) — never merge into Pet Shop :80.
 - **Do not** put real customer/securities product names or real Open API paths into product UI/code. Map concepts onto Pet Shop (`customer_id`, `order`, `accountNo`).
@@ -24,7 +25,7 @@ Before changing this repo, read and follow `docs/PRD.md`.
 | **P1** | Object-level BOLA | path cross-access, **Body `accountNo`**, ID enum |
 | **P2** | Identity / false-positive | cyclic IDs, fixed ID+IP change, token reissue, `operator_code` ON/OFF |
 | **P3** | Behaviour shift | benign self then abrupt foreign probe |
-| baseline | Catalog / self-order | |
+| baseline | Catalog / self-order / **matched_order_learn** (JWT↔owned order) | |
 
 IP change ≠ BOLA. BOLA = access to an object the subject should not own.
 

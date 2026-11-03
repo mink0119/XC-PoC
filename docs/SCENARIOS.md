@@ -27,9 +27,22 @@ flowchart LR
 | **P1** 객체 BOLA | 권한 없는 객체 접근 | `cross_customer_bola`, `account_body_bola`, `id_enumeration` |
 | **P2** 오탐·식별 | 정상 다계정/IP/토큰 | `operator_cyclic`, `operator_fixed`, `access_token_reissue` + `operator_code` |
 | **P3** 이상행위 | 정상 후 급변 | `abnormal_probe` |
-| 기본 | 베이스라인 | `public_catalog`, `self_order` |
+| 기본 | 베이스라인 | `public_catalog`, `self_order`, `matched_order_learn` |
 
 IP 변경 ≠ BOLA. BOLA = 인증 주체가 권한 없는 객체에 접근하는 것.
+
+### baseline matched_order_learn
+
+다수 `customer_id` 각각 토큰을 발급하고 **그 계정 소유 주문 ID만** GET합니다 (교차·열거 없음).
+
+```text
+cid=1 → GET /orders/1, /orders/2
+cid=2 → GET /orders/3, /orders/4
+…
+→ 로컬 라벨 전부 benign · XC identity↔Path order Private Resource 학습용
+```
+
+`self_order`(단일 410)보다 매칭 샘플이 많고, P2 `operator_cyclic`(오탐·다계정 운용)과 목적이 다릅니다.
 
 ### P1b Body Private Resource
 
@@ -63,6 +76,7 @@ Target = Pet Shop URL. 시나리오 클릭 시 **해당 옵션만** 표시.
 ```bash
 cd scenarios
 python3 -m pip install -r requirements.txt
+python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 40
 python3 run_bola.py --base http://192.168.47.81 --scenario account_body_bola
 python3 run_bola.py --base http://192.168.47.81 --scenario abnormal_probe
 python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264
