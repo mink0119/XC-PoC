@@ -242,43 +242,55 @@ def run_self_orders(ctx: Ctx, rows, operator_code_enabled: bool):
     )
 
 
-def run_matched_order_learn(ctx: Ctx, rows, customer_count: int, operator_code_enabled: bool):
-    """XC learning: JWT customer_id N → GET /api/v1/orders/N only.
+def run_matched_order_learn(
+    ctx: Ctx,
+    rows,
+    customer_count: int,
+    rounds: int,
+    operator_code_enabled: bool,
+):
+    """XC learning: JWT customer_id N → GET /api/v1/orders/N, repeated.
 
-    Path id equals the identity claim so Discovery can bind orders/{id} as a
-    private resource (not opaque {DYN}/{DYN}). No foreign order IDs.
+    One round = customers 1..N each hit their matching order once.
+    ``rounds`` repeats that full cycle (e.g. N=300, rounds=100 → 30_000 GETs).
     """
     ctx.scenario = "matched_order_learn"
     if customer_count < 1 or customer_count > bola_model.CUSTOMER_COUNT:
         raise SystemExit(f"--matched-customers 는 1..{bola_model.CUSTOMER_COUNT} 범위여야 합니다")
+    if rounds < 1 or rounds > MAX_MATCHED_ROUNDS:
+        raise SystemExit(f"--matched-rounds 는 1..{MAX_MATCHED_ROUNDS} 범위여야 합니다")
     source_ip = "192.0.2.70"
-    for customer_id in range(1, customer_count + 1):
-        token = issue(ctx, customer_id, None)
-        order_id = bola_model.order_id_for(customer_id, 0)
-        owner = bola_model.customer_id_for_order(order_id)
-        path = f"/api/v1/orders/{order_id}"
-        expected = bola_model.expected_label(customer_id, None, owner)
-        # Require numeric identity↔path match for XC private-resource learning shape.
-        if order_id != customer_id or owner != customer_id or expected != "benign":
-            raise SystemExit(
-                f"matched_order_learn 불일치: customer={customer_id} order={order_id} owner={owner}"
+    tokens: dict[int, str] = {}
+    for round_i in range(1, rounds + 1):
+        for customer_id in range(1, customer_count + 1):
+            if customer_id not in tokens:
+                tokens[customer_id] = issue(ctx, customer_id, None)
+            token = tokens[customer_id]
+            order_id = bola_model.order_id_for(customer_id, 0)
+            owner = bola_model.customer_id_for_order(order_id)
+            path = f"/api/v1/orders/{order_id}"
+            expected = bola_model.expected_label(customer_id, None, owner)
+            # Require numeric identity↔path match for XC private-resource learning shape.
+            if order_id != customer_id or owner != customer_id or expected != "benign":
+                raise SystemExit(
+                    f"matched_order_learn 불일치: customer={customer_id} order={order_id} owner={owner}"
+                )
+            status, _body = get_private(ctx, token, path, source_ip, expected=expected)
+            record(
+                rows,
+                scenario="matched_order_learn",
+                expected=expected,
+                method="GET",
+                path=path,
+                status=status,
+                source_ip=source_ip,
+                operator_code=None,
+                customer_id=customer_id,
+                issued_at=None,
+                owner_customer_id=owner,
+                notes=f"JWT customer_id == /orders/{{id}} · round {round_i}/{rounds}",
+                operator_code_enabled=operator_code_enabled,
             )
-        status, _body = get_private(ctx, token, path, source_ip, expected=expected)
-        record(
-            rows,
-            scenario="matched_order_learn",
-            expected=expected,
-            method="GET",
-            path=path,
-            status=status,
-            source_ip=source_ip,
-            operator_code=None,
-            customer_id=customer_id,
-            issued_at=None,
-            owner_customer_id=owner,
-            notes="JWT customer_id == path /orders/{id} (private resource learn)",
-            operator_code_enabled=operator_code_enabled,
-        )
 
 
 def run_cyclic_operator(ctx: Ctx, rows, sample: int, id_count: int, operator_code_enabled: bool):
@@ -565,6 +577,8 @@ SCENARIOS = (
 )
 
 DEFAULT_MATCHED_CUSTOMERS = 40
+DEFAULT_MATCHED_ROUNDS = 1
+MAX_MATCHED_ROUNDS = 500
 
 # Batch sets (lab UI: 정상 / 비정상 / 전체)
 BATCH_BENIGN_SCENARIOS = (
@@ -590,7 +604,13 @@ def run_selected(ctx: Ctx, rows, name: str, args, operator_code_enabled: bool):
     elif name == "self_order":
         run_self_orders(ctx, rows, operator_code_enabled)
     elif name == "matched_order_learn":
-        run_matched_order_learn(ctx, rows, args.matched_customers, operator_code_enabled)
+        run_matched_order_learn(
+            ctx,
+            rows,
+            args.matched_customers,
+            args.matched_rounds,
+            operator_code_enabled,
+        )
     elif name == "operator_cyclic":
         run_cyclic_operator(ctx, rows, args.cyclic, args.cyclic_ids, operator_code_enabled)
     elif name == "operator_fixed":
@@ -649,8 +669,18 @@ def main():
         type=int,
         default=DEFAULT_MATCHED_CUSTOMERS,
         help=(
-            f"matched_order_learn: customer_id N → GET /orders/N 계정 수 "
+            f"matched_order_learn: customer_id 1..N → GET /orders/N 계정 수 "
             f"1..{bola_model.CUSTOMER_COUNT} (기본 {DEFAULT_MATCHED_CUSTOMERS})"
+        ),
+    )
+    parser.add_argument(
+        "--matched-rounds",
+        type=int,
+        default=DEFAULT_MATCHED_ROUNDS,
+        help=(
+            f"matched_order_learn: 1..N 전체 사이클 반복 횟수 "
+            f"1..{MAX_MATCHED_ROUNDS} (기본 {DEFAULT_MATCHED_ROUNDS}; "
+            f"예: --matched-customers 300 --matched-rounds 100)"
         ),
     )
     parser.add_argument("--enum", type=int, default=20, help="ID 열거 샘플 수")

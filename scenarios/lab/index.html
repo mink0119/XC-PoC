@@ -442,7 +442,12 @@
             <label class="field" data-batch-opt="matched">
               <strong>매칭 학습 계정 수</strong>
               <input id="matchedCustomers" type="number" min="1" max="600" value="40" />
-              <span class="opt-help">customer_id N → GET /orders/N (id 동일)</span>
+              <span class="opt-help">1..N → 각 GET /orders/N</span>
+            </label>
+            <label class="field" data-batch-opt="matched">
+              <strong>매칭 사이클 반복</strong>
+              <input id="matchedRounds" type="number" min="1" max="500" value="1" />
+              <span class="opt-help">1..N 전체를 몇 번 반복 (예: 300×100)</span>
             </label>
           </div>
           <div class="toggle-block" data-batch-opt="operator">
@@ -499,8 +504,13 @@
             </label>
             <label class="field opt-slot" data-opt="matchedCustomers" hidden>
               <strong>몇 개 계정으로 매칭 학습할까</strong>
-              <input id="matchedCustomersSingle" type="number" min="1" max="600" value="40" />
+              <input id="matchedCustomersSingle" type="number" min="1" max="600" value="300" />
               <span class="opt-help">1..N. 각 토큰은 GET /orders/{같은 N} 만.</span>
+            </label>
+            <label class="field opt-slot" data-opt="matchedRounds" hidden>
+              <strong>1..N 사이클을 몇 번 반복할까</strong>
+              <input id="matchedRoundsSingle" type="number" min="1" max="500" value="1" />
+              <span class="opt-help">예: 계정 300 + 반복 100 → 요청 30,000건</span>
             </label>
           </div>
           <div class="toggle-block opt-slot" data-opt="operatorCode" hidden>
@@ -699,19 +709,18 @@
       matched_order_learn: {
         group: "baseline", groupLabel: "기본 · 베이스라인",
         title: "정상 · customer↔주문 매칭 학습",
-        short: "cid=N → GET /orders/N 만 반복",
-        expected: "benign", options: ["matchedCustomers"],
-        desc: "JWT customer_id 와 Path /orders/{id} 의 id 를 같은 숫자로 맞춰 연속 호출합니다. 타인 주문·열거 없음.",
-        why: "XC가 endpoint를 {DYN}/{DYN}이 아니라 orders/{id} 로 보고, {id}를 identity(customer_id)에 묶인 Private Resource로 학습하는지 확인하기 위한 정상 트래픽입니다.",
+        short: "cid=N → /orders/N · 사이클 반복",
+        expected: "benign", options: ["matchedCustomers", "matchedRounds"],
+        desc: "JWT customer_id 와 Path /orders/{id} 를 같은 숫자로 맞춥니다. 계정 수(1..N)와 그 전체 사이클 반복 횟수를 지정합니다.",
+        why: "XC가 orders/{id}를 Private Resource로 학습하도록, 동일 매칭 요청을 대량·반복으로 쌓습니다. 예: N=300 × rounds=100.",
         flow: `flowchart TD
-          C1[JWT cid=1] -->|GET /orders/1| T[Pet Shop]
-          C2[JWT cid=2] -->|GET /orders/2| T
-          CN[JWT cid=N] -->|GET /orders/N| T
-          T --> R[orders/id Private Resource 학습]`,
-        example: `cid=1 → GET /orders/1
-cid=2 → GET /orders/2
-cid=177 → GET /orders/177
-(항상 customer_id == path id)`,
+          R1[round 1: 1..N] --> R2[round 2: 1..N]
+          R2 --> RK[round K: 1..N]
+          RK --> T[Pet Shop]
+          T --> X[orders/id Private Resource 학습]`,
+        example: `계정 300, 반복 100
+→ (cid=1→/orders/1 … cid=300→/orders/300) × 100
+= 30,000 GET (전부 customer_id == path id)`,
       },
       cross_customer_bola: {
         group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
@@ -878,6 +887,7 @@ Authorization: Bearer (410)
         fixedSample: num("fixedSample", "fixedSampleSingle", 1, 50),
         enumCount: num("enumCount", "enumCountSingle", 1, 100),
         matchedCustomers: num("matchedCustomers", "matchedCustomersSingle", 1, 600),
+        matchedRounds: num("matchedRounds", "matchedRoundsSingle", 1, 500),
         operatorCodeEnabled: checked("operatorCode", "operatorCodeSingle"),
         enforceOwnership: document.getElementById("enforceOwnership").checked,
       };
@@ -1106,23 +1116,31 @@ Authorization: Bearer (410)
     RUNNERS.matched_order_learn = async function (c, rows) {
       currentScenario = "matched_order_learn";
       const n = c.matchedCustomers;
+      const rounds = c.matchedRounds;
       const sourceIp = "192.0.2.70";
-      for (let customerId = 1; customerId <= n; customerId++) {
-        const token = await issueToken(c.base, customerId, null);
-        // XC learn shape: JWT customer_id === path /orders/{id}
-        const orderId = customerId;
-        const path = "/api/v1/orders/" + orderId;
-        const expected = expectedLabel(customerId, null, orderId);
-        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, {
-          scenario: "matched_order_learn",
-          expected,
-          status,
-          source_ip: sourceIp,
-          customer_id: customerId,
-          operator_code: null,
-          path,
-        });
+      const tokens = {};
+      for (let round = 1; round <= rounds; round++) {
+        for (let customerId = 1; customerId <= n; customerId++) {
+          if (!tokens[customerId]) {
+            tokens[customerId] = await issueToken(c.base, customerId, null);
+          }
+          const token = tokens[customerId];
+          // XC learn shape: JWT customer_id === path /orders/{id}
+          const orderId = customerId;
+          const path = "/api/v1/orders/" + orderId;
+          const expected = expectedLabel(customerId, null, orderId);
+          const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+          push(rows, {
+            scenario: "matched_order_learn",
+            expected,
+            status,
+            source_ip: sourceIp,
+            customer_id: customerId,
+            operator_code: null,
+            path,
+            notes: "round " + round + "/" + rounds,
+          });
+        }
       }
     };
 

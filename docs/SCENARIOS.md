@@ -37,13 +37,16 @@ XC가 `orders/{id}`를 `{DYN}`이 아니라 **identity에 묶인 Private Resourc
 
 ```text
 JWT customer_id=1  → GET /api/v1/orders/1
-JWT customer_id=2  → GET /api/v1/orders/2
+…
 JWT customer_id=N  → GET /api/v1/orders/N
+(위 1..N 사이클) × rounds
 → 전부 benign · 교차·열거 없음
 ```
 
-Pet Shop 주문 소유는 **1:1** (`order_id == customer_id`)로 고정한다.  
-`self_order`는 단건(410→/orders/410), 이 시나리오는 다수 N으로 같은 형태를 반복한다.
+옵션: `--matched-customers N` (계정 수), `--matched-rounds K` (1..N 전체 반복).  
+예: `N=300`, `K=100` → 30,000 GET.
+
+Pet Shop 주문 소유는 **1:1** (`order_id == customer_id`)로 고정한다.
 
 ### P1b Body Private Resource
 
@@ -77,7 +80,7 @@ Target = Pet Shop URL. 시나리오 클릭 시 **해당 옵션만** 표시.
 ```bash
 cd scenarios
 python3 -m pip install -r requirements.txt
-python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 40
+python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 300 --matched-rounds 100
 python3 run_bola.py --base http://192.168.47.81 --scenario account_body_bola
 python3 run_bola.py --base http://192.168.47.81 --scenario abnormal_probe
 python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264
