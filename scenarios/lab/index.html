@@ -711,7 +711,7 @@
         title: "정상 · customer↔주문 매칭 학습",
         short: "cid=N → /orders/N · 사이클 반복",
         expected: "benign", options: ["matchedCustomers", "matchedRounds"],
-        desc: "JWT customer_id 와 Path /orders/{id} 를 같은 숫자로 맞춥니다. 계정 수(1..N)와 그 전체 사이클 반복 횟수를 지정합니다.",
+        desc: "JWT customer_id 와 Path /orders/{id} 를 같은 숫자로 맞춥니다. 계정 수(1..N)와 그 전체 사이클 반복 횟수를 지정합니다. 응답에 customer_id 필드 포함.",
         why: "XC가 orders/{id}를 Private Resource로 학습하도록, 동일 매칭 요청을 대량·반복으로 쌓습니다. 예: N=300 × rounds=100.",
         flow: `flowchart TD
           R1[round 1: 1..N] --> R2[round 2: 1..N]
@@ -721,6 +721,21 @@
         example: `계정 300, 반복 100
 → (cid=1→/orders/1 … cid=300→/orders/300) × 100
 = 30,000 GET (전부 customer_id == path id)`,
+      },
+      matched_account_learn: {
+        group: "baseline", groupLabel: "기본 · 베이스라인",
+        title: "정상 · customer↔계좌 매칭 학습",
+        short: "cid=N → Body accountNo 본인 계좌",
+        expected: "benign", options: ["matchedCustomers", "matchedRounds"],
+        desc: "기존 POST /api/v1/accounts/inquire 를 사용합니다. JWT customer_id=N 이면 Body accountNo=10000000+N (본인 계좌)만 조회합니다.",
+        why: "Path가 아닌 Body Private Resource(accountNo)를 identity와 묶어 XC가 학습하는지 확인합니다. P1b account_body_bola(타인 계좌)와 대조.",
+        flow: `flowchart TD
+          T1[JWT cid=N] -->|POST /accounts/inquire| API[Pet Shop]
+          T1 -->|Body accountNo=10000000+N| API
+          API --> R[benign · accountNo Private Resource]`,
+        example: `cid=1 → accountNo=10000001
+cid=2 → accountNo=10000002
+(사이클 × rounds, 타인 계좌 없음)`,
       },
       cross_customer_bola: {
         group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
@@ -1138,6 +1153,45 @@ Authorization: Bearer (410)
             customer_id: customerId,
             operator_code: null,
             path,
+            notes: "round " + round + "/" + rounds,
+          });
+        }
+      }
+    };
+
+    RUNNERS.matched_account_learn = async function (c, rows) {
+      currentScenario = "matched_account_learn";
+      const n = c.matchedCustomers;
+      const rounds = c.matchedRounds;
+      const sourceIp = "192.0.2.71";
+      const path = "/api/v1/accounts/inquire";
+      const tokens = {};
+      for (let round = 1; round <= rounds; round++) {
+        for (let customerId = 1; customerId <= n; customerId++) {
+          if (!tokens[customerId]) {
+            tokens[customerId] = await issueToken(c.base, customerId, null);
+          }
+          const token = tokens[customerId];
+          const accountNo = accountNoFor(customerId);
+          const expected = expectedLabel(customerId, null, customerId);
+          const { status } = await loggedFetch("POST", c.base + path, {
+            headers: {
+              Authorization: "Bearer " + token,
+              "X-Forwarded-For": sourceIp,
+              "X-Real-IP": sourceIp,
+            },
+            body: { accountNo },
+            expected,
+            meta: { kind: "account_matched", accountNo, round },
+          });
+          push(rows, {
+            scenario: "matched_account_learn",
+            expected,
+            status,
+            source_ip: sourceIp,
+            customer_id: customerId,
+            operator_code: null,
+            path: path + " accountNo=" + accountNo,
             notes: "round " + round + "/" + rounds,
           });
         }

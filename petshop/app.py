@@ -778,7 +778,12 @@ def _openapi():
                     "type": "object",
                     "properties": {
                         "accountNo": {"type": "string", "example": "10000001"},
-                        "customerId": {"type": "integer"},
+                        "customer_id": {
+                            "type": "integer",
+                            "description": "JWT claim 과 동일 키 (XC attribute 학습용)",
+                            "example": 1,
+                        },
+                        "customerId": {"type": "integer", "example": 1},
                         "currency": {"type": "string", "example": "USD"},
                         "available": {"type": "number"},
                         "held": {"type": "number"},

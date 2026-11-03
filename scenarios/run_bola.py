@@ -293,6 +293,63 @@ def run_matched_order_learn(
             )
 
 
+def run_matched_account_learn(
+    ctx: Ctx,
+    rows,
+    customer_count: int,
+    rounds: int,
+    operator_code_enabled: bool,
+):
+    """XC learning: JWT customer_id N → POST /accounts/inquire with own accountNo.
+
+    accountNo = 10000000+N so Body private resource matches the token subject.
+    """
+    ctx.scenario = "matched_account_learn"
+    if customer_count < 1 or customer_count > bola_model.CUSTOMER_COUNT:
+        raise SystemExit(f"--matched-customers 는 1..{bola_model.CUSTOMER_COUNT} 범위여야 합니다")
+    if rounds < 1 or rounds > MAX_MATCHED_ROUNDS:
+        raise SystemExit(f"--matched-rounds 는 1..{MAX_MATCHED_ROUNDS} 범위여야 합니다")
+    source_ip = "192.0.2.71"
+    path = "/api/v1/accounts/inquire"
+    tokens: dict[int, str] = {}
+    for round_i in range(1, rounds + 1):
+        for customer_id in range(1, customer_count + 1):
+            if customer_id not in tokens:
+                tokens[customer_id] = issue(ctx, customer_id, None)
+            token = tokens[customer_id]
+            account_no = bola_model.account_no_for(customer_id)
+            owner = bola_model.customer_id_for_account_no(account_no)
+            expected = bola_model.expected_label(customer_id, None, owner or -1)
+            if owner != customer_id or expected != "benign":
+                raise SystemExit(
+                    f"matched_account_learn 불일치: customer={customer_id} accountNo={account_no} owner={owner}"
+                )
+            status, _body = post_private(
+                ctx,
+                token,
+                path,
+                source_ip,
+                {"accountNo": account_no},
+                expected=expected,
+                meta={"accountNo": account_no, "round": round_i},
+            )
+            record(
+                rows,
+                scenario="matched_account_learn",
+                expected=expected,
+                method="POST",
+                path=path,
+                status=status,
+                source_ip=source_ip,
+                operator_code=None,
+                customer_id=customer_id,
+                issued_at=None,
+                owner_customer_id=owner,
+                notes=f"JWT customer_id == accountNo owner · round {round_i}/{rounds}",
+                operator_code_enabled=operator_code_enabled,
+            )
+
+
 def run_cyclic_operator(ctx: Ctx, rows, sample: int, id_count: int, operator_code_enabled: bool):
     ctx.scenario = "operator_cyclic"
     if id_count < 1 or id_count > MAX_CYCLIC_IDS:
@@ -567,6 +624,7 @@ SCENARIOS = (
     "public_catalog",
     "self_order",
     "matched_order_learn",
+    "matched_account_learn",
     "operator_cyclic",
     "operator_fixed",
     "access_token_reissue",
@@ -585,6 +643,7 @@ BATCH_BENIGN_SCENARIOS = (
     "public_catalog",
     "self_order",
     "matched_order_learn",
+    "matched_account_learn",
     "operator_cyclic",
     "operator_fixed",
     "access_token_reissue",
@@ -605,6 +664,14 @@ def run_selected(ctx: Ctx, rows, name: str, args, operator_code_enabled: bool):
         run_self_orders(ctx, rows, operator_code_enabled)
     elif name == "matched_order_learn":
         run_matched_order_learn(
+            ctx,
+            rows,
+            args.matched_customers,
+            args.matched_rounds,
+            operator_code_enabled,
+        )
+    elif name == "matched_account_learn":
+        run_matched_account_learn(
             ctx,
             rows,
             args.matched_customers,

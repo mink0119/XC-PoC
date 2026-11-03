@@ -232,6 +232,8 @@ def order_record(order_id: int) -> dict[str, Any]:
     return {
         "id": order_id,
         "number": f"PS-2026-{1000 + order_id}",
+        # Both spellings: camelCase API style + JWT claim name for XC attribute binding.
+        "customer_id": customer_id,
         "customerId": customer_id,
         "status": ["placed", "paid", "shipped", "delivered"][(order_id - 1) % 4],
         "currency": "USD",
@@ -324,6 +326,7 @@ def account_balance_record(customer_id: int) -> dict[str, Any]:
     """Private balance payload — includes sensitive-looking fields for discovery demos."""
     return {
         "accountNo": account_no_for(customer_id),
+        "customer_id": customer_id,
         "customerId": customer_id,
         "currency": "USD",
         "available": round(1000 + customer_id * 3.25, 2),

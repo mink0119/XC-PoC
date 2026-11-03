@@ -27,7 +27,7 @@ flowchart LR
 | **P1** 객체 BOLA | 권한 없는 객체 접근 | `cross_customer_bola`, `account_body_bola`, `id_enumeration` |
 | **P2** 오탐·식별 | 정상 다계정/IP/토큰 | `operator_cyclic`, `operator_fixed`, `access_token_reissue` + `operator_code` |
 | **P3** 이상행위 | 정상 후 급변 | `abnormal_probe` |
-| 기본 | 베이스라인 | `public_catalog`, `self_order`, `matched_order_learn` |
+| 기본 | 베이스라인 | `public_catalog`, `self_order`, `matched_order_learn`, `matched_account_learn` |
 
 IP 변경 ≠ BOLA. BOLA = 인증 주체가 권한 없는 객체에 접근하는 것.
 
@@ -46,7 +46,20 @@ JWT customer_id=N  → GET /api/v1/orders/N
 옵션: `--matched-customers N` (계정 수), `--matched-rounds K` (1..N 전체 반복).  
 예: `N=300`, `K=100` → 30,000 GET.
 
+주문 응답에 `customer_id` / `customerId` 를 넣어 JWT claim 과 같은 키로 attribute 학습이 되게 한다.  
 Pet Shop 주문 소유는 **1:1** (`order_id == customer_id`)로 고정한다.
+
+### baseline matched_account_learn
+
+기존 `POST /api/v1/accounts/inquire` 사용 (신규 path 없음).
+
+```text
+JWT customer_id=N → Body { "accountNo": "10000000+N" }
+→ 응답 customer_id / accountNo · benign
+× matched-rounds
+```
+
+P1b `account_body_bola`(타인 accountNo)와 대조용 정상 Body Private Resource 학습.
 
 ### P1b Body Private Resource
 
@@ -81,6 +94,7 @@ Target = Pet Shop URL. 시나리오 클릭 시 **해당 옵션만** 표시.
 cd scenarios
 python3 -m pip install -r requirements.txt
 python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 300 --matched-rounds 100
+python3 run_bola.py --base http://192.168.47.81 --scenario matched_account_learn --matched-customers 300 --matched-rounds 100
 python3 run_bola.py --base http://192.168.47.81 --scenario account_body_bola
 python3 run_bola.py --base http://192.168.47.81 --scenario abnormal_probe
 python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264
