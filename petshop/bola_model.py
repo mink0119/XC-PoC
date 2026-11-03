@@ -80,7 +80,8 @@ OPERATORS: dict[str, dict[str, Any]] = {
 }
 
 CUSTOMER_COUNT = 600
-ORDERS_PER_CUSTOMER = 2
+# 1:1 so path /orders/{id} id == JWT customer_id (XC private-resource learning).
+ORDERS_PER_CUSTOMER = 1
 PAYMENTS_PER_CUSTOMER = 1
 MEDICAL_PER_PET = 2
 
@@ -191,7 +192,9 @@ def customer_record(customer_id: int) -> dict[str, Any]:
 
 
 def order_id_for(customer_id: int, slot: int = 0) -> int:
-    """Seed helper: each customer gets ORDERS_PER_CUSTOMER contiguous order rows."""
+    """Seed helper: order id == customer_id when ORDERS_PER_CUSTOMER=1 (XC learn shape)."""
+    if slot < 0 or slot >= ORDERS_PER_CUSTOMER:
+        raise ValueError(f"order slot must be 0..{ORDERS_PER_CUSTOMER - 1}")
     return (customer_id - 1) * ORDERS_PER_CUSTOMER + slot + 1
 
 

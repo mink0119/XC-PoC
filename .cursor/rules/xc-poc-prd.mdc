@@ -25,7 +25,8 @@ Before changing this repo, read and follow `docs/PRD.md`.
 | **P1** | Object-level BOLA | path cross-access, **Body `accountNo`**, ID enum |
 | **P2** | Identity / false-positive | cyclic IDs, fixed ID+IP change, token reissue, `operator_code` ON/OFF |
 | **P3** | Behaviour shift | benign self then abrupt foreign probe |
-| baseline | Catalog / self-order / **matched_order_learn** (JWT↔owned order) | |
+| baseline | Catalog / self-order / **matched_order_learn** (`customer_id` N → `/orders/N` for XC private-resource vs `{DYN}`) | |
+- Order ownership is **1:1** (`ORDERS_PER_CUSTOMER=1`, `order_id == customer_id`) so matched learning traffic shares the same numeric id in JWT and path.
 
 IP change ≠ BOLA. BOLA = access to an object the subject should not own.
 

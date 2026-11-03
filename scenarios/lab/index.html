@@ -442,7 +442,7 @@
             <label class="field" data-batch-opt="matched">
               <strong>매칭 학습 계정 수</strong>
               <input id="matchedCustomers" type="number" min="1" max="600" value="40" />
-              <span class="opt-help">customer_id 1..N, 각 소유 주문만 (계정당 2건)</span>
+              <span class="opt-help">customer_id N → GET /orders/N (id 동일)</span>
             </label>
           </div>
           <div class="toggle-block" data-batch-opt="operator">
@@ -500,7 +500,7 @@
             <label class="field opt-slot" data-opt="matchedCustomers" hidden>
               <strong>몇 개 계정으로 매칭 학습할까</strong>
               <input id="matchedCustomersSingle" type="number" min="1" max="600" value="40" />
-              <span class="opt-help">customer_id 1..N. 각 토큰은 자기 주문(슬롯 2개)만 GET.</span>
+              <span class="opt-help">1..N. 각 토큰은 GET /orders/{같은 N} 만.</span>
             </label>
           </div>
           <div class="toggle-block opt-slot" data-opt="operatorCode" hidden>
@@ -635,7 +635,8 @@
   <script>
     mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
 
-    const ORDERS_PER_CUSTOMER = 2;
+    // 1:1 → path /orders/{id} id == JWT customer_id (XC private-resource learn shape)
+    const ORDERS_PER_CUSTOMER = 1;
     const PAYMENTS_PER_CUSTOMER = 1;
     const EXPECTED_LABEL = { benign: "정상", bola: "BOLA" };
 
@@ -693,23 +694,24 @@
           L -->|내 주문 GET| T
           T -->|200| L
           L --> R[기대: 정상]`,
-        example: `토큰 customer_id=410 → GET 내 주문 → 정상`,
+        example: `토큰 customer_id=410 → GET /orders/410 → 정상`,
       },
       matched_order_learn: {
         group: "baseline", groupLabel: "기본 · 베이스라인",
         title: "정상 · customer↔주문 매칭 학습",
-        short: "다수 계정 × 각자 소유 주문만",
+        short: "cid=N → GET /orders/N 만 반복",
         expected: "benign", options: ["matchedCustomers"],
-        desc: "customer_id 1..N 각각 토큰을 발급하고, 그 계정 소유 주문 ID만 GET합니다. 타인 주문은 넣지 않습니다.",
-        why: "XC가 Path 주문 ID를 Private Resource로 보고, JWT customer_id와 짝을 학습하도록 정상 기준선을 쌓습니다. self_order(단일 410)보다 매칭 샘플이 많습니다.",
+        desc: "JWT customer_id 와 Path /orders/{id} 의 id 를 같은 숫자로 맞춰 연속 호출합니다. 타인 주문·열거 없음.",
+        why: "XC가 endpoint를 {DYN}/{DYN}이 아니라 orders/{id} 로 보고, {id}를 identity(customer_id)에 묶인 Private Resource로 학습하는지 확인하기 위한 정상 트래픽입니다.",
         flow: `flowchart TD
-          C1[토큰 cid=1] -->|GET 소유주문| T[Pet Shop]
-          C2[토큰 cid=2] -->|GET 소유주문| T
-          CN[토큰 cid=N] -->|GET 소유주문| T
-          T --> R[전부 정상 · Private 매칭 학습]`,
-        example: `cid=1 → /orders/1,/orders/2
-cid=2 → /orders/3,/orders/4
-… (소유 주문만, 교차 없음)`,
+          C1[JWT cid=1] -->|GET /orders/1| T[Pet Shop]
+          C2[JWT cid=2] -->|GET /orders/2| T
+          CN[JWT cid=N] -->|GET /orders/N| T
+          T --> R[orders/id Private Resource 학습]`,
+        example: `cid=1 → GET /orders/1
+cid=2 → GET /orders/2
+cid=177 → GET /orders/177
+(항상 customer_id == path id)`,
       },
       cross_customer_bola: {
         group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
@@ -1107,22 +1109,20 @@ Authorization: Bearer (410)
       const sourceIp = "192.0.2.70";
       for (let customerId = 1; customerId <= n; customerId++) {
         const token = await issueToken(c.base, customerId, null);
-        for (let slot = 0; slot < ORDERS_PER_CUSTOMER; slot++) {
-          const orderId = orderIdFor(customerId, slot);
-          const owner = customerIdForOrder(orderId);
-          const path = "/api/v1/orders/" + orderId;
-          const expected = expectedLabel(customerId, null, owner);
-          const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-          push(rows, {
-            scenario: "matched_order_learn",
-            expected,
-            status,
-            source_ip: sourceIp,
-            customer_id: customerId,
-            operator_code: null,
-            path,
-          });
-        }
+        // XC learn shape: JWT customer_id === path /orders/{id}
+        const orderId = customerId;
+        const path = "/api/v1/orders/" + orderId;
+        const expected = expectedLabel(customerId, null, orderId);
+        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+        push(rows, {
+          scenario: "matched_order_learn",
+          expected,
+          status,
+          source_ip: sourceIp,
+          customer_id: customerId,
+          operator_code: null,
+          path,
+        });
       }
     };
 
@@ -1240,9 +1240,7 @@ Authorization: Bearer (410)
       currentScenario = "abnormal_probe";
       const customerId = 410;
       const token = await issueToken(c.base, customerId, null);
-      for (const slot of [0, 1]) {
-        const orderId = orderIdFor(customerId, slot);
-        const path = "/api/v1/orders/" + orderId;
+      for (const path of ["/api/v1/orders/" + customerId, "/api/v1/payments/" + customerId]) {
         const expected = expectedLabel(customerId, null, customerId);
         const { status } = await getPrivate(c.base, token, path, "192.0.2.60", expected);
         push(rows, { scenario: "abnormal_probe", expected, status, source_ip: "192.0.2.60", customer_id: customerId, operator_code: null, path });

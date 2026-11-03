@@ -80,7 +80,7 @@ OOB vs Inline 역할은 README/시나리오 안내 문구로만 명시한다.
 | P2c | P2 오탐 | `access_token_reissue` | benign | 24h 토큰 재발급을 신규 공격자로 보지 않는가? |
 | P2d | P2 오탐 | `operator_code` 토글 | — | Claim 없을 때(현재) vs 있을 때(미래) 비교 |
 | P3a | P3 이상 | `abnormal_probe` | mixed | 정상 자기조회 후 타인 객체 급탐색을 구분하는가? |
-| — | baseline | `public_catalog`, `self_order`, `matched_order_learn` | benign | 베이스라인 · **JWT customer_id↔소유 주문** Private Resource 학습 |
+| — | baseline | `public_catalog`, `self_order`, `matched_order_learn` | benign | 베이스라인 · **JWT `customer_id` == path `/orders/{id}`** (XC Private Resource vs `{DYN}` 학습) |
 | P4–P6 | 문서 | — | — | Discovery·민감정보·Inline 차단은 XC/별도 Inline 환경. 랩은 민감 필드가 든 응답을 **제공**만 함 |
 
 ### 학습 기간

@@ -243,9 +243,10 @@ def run_self_orders(ctx: Ctx, rows, operator_code_enabled: bool):
 
 
 def run_matched_order_learn(ctx: Ctx, rows, customer_count: int, operator_code_enabled: bool):
-    """XC learning: each JWT customer_id only GETs that customer's own order IDs.
+    """XC learning: JWT customer_id N → GET /api/v1/orders/N only.
 
-    Builds a clear subject↔private-object baseline (no foreign IDs, no operator claim).
+    Path id equals the identity claim so Discovery can bind orders/{id} as a
+    private resource (not opaque {DYN}/{DYN}). No foreign order IDs.
     """
     ctx.scenario = "matched_order_learn"
     if customer_count < 1 or customer_count > bola_model.CUSTOMER_COUNT:
@@ -253,31 +254,31 @@ def run_matched_order_learn(ctx: Ctx, rows, customer_count: int, operator_code_e
     source_ip = "192.0.2.70"
     for customer_id in range(1, customer_count + 1):
         token = issue(ctx, customer_id, None)
-        for slot in range(bola_model.ORDERS_PER_CUSTOMER):
-            order_id = bola_model.order_id_for(customer_id, slot)
-            owner = bola_model.customer_id_for_order(order_id)
-            path = f"/api/v1/orders/{order_id}"
-            expected = bola_model.expected_label(customer_id, None, owner)
-            if expected != "benign" or owner != customer_id:
-                raise SystemExit(
-                    f"matched_order_learn 내부 불일치: customer={customer_id} order={order_id} owner={owner}"
-                )
-            status, _body = get_private(ctx, token, path, source_ip, expected=expected)
-            record(
-                rows,
-                scenario="matched_order_learn",
-                expected=expected,
-                method="GET",
-                path=path,
-                status=status,
-                source_ip=source_ip,
-                operator_code=None,
-                customer_id=customer_id,
-                issued_at=None,
-                owner_customer_id=owner,
-                notes="JWT customer_id와 소유 주문만 매칭 조회",
-                operator_code_enabled=operator_code_enabled,
+        order_id = bola_model.order_id_for(customer_id, 0)
+        owner = bola_model.customer_id_for_order(order_id)
+        path = f"/api/v1/orders/{order_id}"
+        expected = bola_model.expected_label(customer_id, None, owner)
+        # Require numeric identity↔path match for XC private-resource learning shape.
+        if order_id != customer_id or owner != customer_id or expected != "benign":
+            raise SystemExit(
+                f"matched_order_learn 불일치: customer={customer_id} order={order_id} owner={owner}"
             )
+        status, _body = get_private(ctx, token, path, source_ip, expected=expected)
+        record(
+            rows,
+            scenario="matched_order_learn",
+            expected=expected,
+            method="GET",
+            path=path,
+            status=status,
+            source_ip=source_ip,
+            operator_code=None,
+            customer_id=customer_id,
+            issued_at=None,
+            owner_customer_id=owner,
+            notes="JWT customer_id == path /orders/{id} (private resource learn)",
+            operator_code_enabled=operator_code_enabled,
+        )
 
 
 def run_cyclic_operator(ctx: Ctx, rows, sample: int, id_count: int, operator_code_enabled: bool):
@@ -490,11 +491,11 @@ def run_abnormal_probe(ctx: Ctx, rows, operator_code_enabled: bool):
     ctx.scenario = "abnormal_probe"
     customer_id = 410
     token = issue(ctx, customer_id, None)
-    # benign self
-    for slot in (0, 1):
-        order_id = bola_model.order_id_for(customer_id, slot)
-        owner = bola_model.customer_id_for_order(order_id)
-        path = f"/api/v1/orders/{order_id}"
+    # benign self — path id == customer_id
+    for path, owner in (
+        (f"/api/v1/orders/{customer_id}", customer_id),
+        (f"/api/v1/payments/{customer_id}", customer_id),
+    ):
         expected = bola_model.expected_label(customer_id, None, owner)
         status, _body = get_private(ctx, token, path, "192.0.2.60", expected=expected)
         record(
@@ -509,7 +510,7 @@ def run_abnormal_probe(ctx: Ctx, rows, operator_code_enabled: bool):
             customer_id=customer_id,
             issued_at=None,
             owner_customer_id=owner,
-            notes="정상: 자기 주문",
+            notes="정상: 자기 객체 (id==customer_id)",
             operator_code_enabled=operator_code_enabled,
         )
     # abrupt foreign probe
@@ -648,9 +649,8 @@ def main():
         type=int,
         default=DEFAULT_MATCHED_CUSTOMERS,
         help=(
-            f"matched_order_learn: JWT customer_id와 소유 주문만 조회할 계정 수 "
-            f"1..{bola_model.CUSTOMER_COUNT} (기본 {DEFAULT_MATCHED_CUSTOMERS}; 계정당 주문 "
-            f"{bola_model.ORDERS_PER_CUSTOMER}건)"
+            f"matched_order_learn: customer_id N → GET /orders/N 계정 수 "
+            f"1..{bola_model.CUSTOMER_COUNT} (기본 {DEFAULT_MATCHED_CUSTOMERS})"
         ),
     )
     parser.add_argument("--enum", type=int, default=20, help="ID 열거 샘플 수")

@@ -33,16 +33,17 @@ IP 변경 ≠ BOLA. BOLA = 인증 주체가 권한 없는 객체에 접근하는
 
 ### baseline matched_order_learn
 
-다수 `customer_id` 각각 토큰을 발급하고 **그 계정 소유 주문 ID만** GET합니다 (교차·열거 없음).
+XC가 `orders/{id}`를 `{DYN}`이 아니라 **identity에 묶인 Private Resource**로 학습하는지 보려면, JWT `customer_id`와 path `id`가 **같은 숫자**여야 합니다.
 
 ```text
-cid=1 → GET /orders/1, /orders/2
-cid=2 → GET /orders/3, /orders/4
-…
-→ 로컬 라벨 전부 benign · XC identity↔Path order Private Resource 학습용
+JWT customer_id=1  → GET /api/v1/orders/1
+JWT customer_id=2  → GET /api/v1/orders/2
+JWT customer_id=N  → GET /api/v1/orders/N
+→ 전부 benign · 교차·열거 없음
 ```
 
-`self_order`(단일 410)보다 매칭 샘플이 많고, P2 `operator_cyclic`(오탐·다계정 운용)과 목적이 다릅니다.
+Pet Shop 주문 소유는 **1:1** (`order_id == customer_id`)로 고정한다.  
+`self_order`는 단건(410→/orders/410), 이 시나리오는 다수 N으로 같은 형태를 반복한다.
 
 ### P1b Body Private Resource
 
