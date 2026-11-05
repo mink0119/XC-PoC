@@ -580,8 +580,8 @@
         desc: "JWT customer_id 와 Path /orders/{id} 가 같습니다. 계정마다 다른 X-Forwarded-For(기본 50개).",
         why: "XC Private Resource 학습·정상 baseline.",
         flow: `flowchart LR
-          C1[cid1+XFF1] --> O1[/orders/1]
-          C2[cid2+XFF2] --> O2[/orders/2]`,
+          C1["cid1 + XFF1"] --> O1["/orders/1"]
+          C2["cid2 + XFF2"] --> O2["/orders/2"]`,
         example: `cid=1 → GET /api/v1/orders/1 · XFF 198.51.100.1
 cid=2 → GET /api/v1/orders/2 · XFF 198.51.100.2`,
       },
@@ -594,8 +594,8 @@ cid=2 → GET /api/v1/orders/2 · XFF 198.51.100.2`,
         desc: "토큰의 customer_id 와 다른 주문 번호만 요청합니다. Path는 /api/v1/orders/{id} 만 사용합니다.",
         why: "객체 BOLA. 소유권 OFF면 200 유출(XC 관찰), ON이면 403.",
         flow: `flowchart LR
-          C1[cid1] -->|GET| X[/orders/2]
-          C2[cid2] -->|GET| Y[/orders/3]`,
+          C1["cid1"] -->|GET| X["/orders/2"]
+          C2["cid2"] -->|GET| Y["/orders/3"]`,
         example: `cid=1 → GET /api/v1/orders/2  (불일치 → BOLA)
 cid=2 → GET /api/v1/orders/3`,
       },
@@ -608,8 +608,8 @@ cid=2 → GET /api/v1/orders/3`,
         desc: "1..풀크기 customer_id 를 돌아가며 쓰고, 각 계정은 자기 주문만 조회합니다. XFF는 공유 IP 개수로만 순환합니다(계정마다 IP를 바꾸지 않음).",
         why: "다계정+소수 IP 정상 패턴이 공격으로 오인되는지 검토.",
         flow: `flowchart TD
-          P[계정풀 1..N] --> S[공유 IP 1..K]
-          S --> O[각 cid → /orders/cid]`,
+          P["계정풀 1..N"] --> S["공유 IP 1..K"]
+          S --> O["각 cid → /orders/cid"]`,
         example: `풀=50, 공유IP=1
 cid=1 → /orders/1 · XFF 203.0.113.200
 cid=2 → /orders/2 · XFF 203.0.113.200 (동일)`,
@@ -771,12 +771,15 @@ cid=2 → /orders/2 · XFF 203.0.113.200 (동일)`,
       const id = "flow-" + (++flowRender);
       el.removeAttribute("data-processed");
       el.className = "mermaid";
-      el.textContent = text;
+      el.textContent = "";
+      document.querySelectorAll('[id^="dflow-"], .mermaid-error, svg[aria-roledescription="error"]').forEach((n) => n.remove());
       try {
         const { svg } = await mermaid.render(id, text);
+        if (id !== "flow-" + flowRender) return;
         el.innerHTML = svg;
       } catch (err) {
-        el.textContent = text + "\n\n(표시 오류: " + err.message + ")";
+        if (id !== "flow-" + flowRender) return;
+        el.textContent = "(흐름도 표시 실패) " + (err && err.message ? err.message : String(err));
       }
     }
 
