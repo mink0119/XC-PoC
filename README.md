@@ -97,13 +97,11 @@ python3 serve_lab.py
 
 1. **http://192.168.47.81:8765** 접속
 2. 대상 서버 = `http://192.168.47.81` (또는 XC VIP)
-3. 왼쪽 **일괄트래픽(학습)**
-   - **정상 · XC 학습** × N (기본 300) — baseline
-   - **비정상 · BOLA/이상** — 학습 후
-   - **전체 시나리오**
-4. 시나리오마다 **필요한 옵션만** 표시 (매칭 학습=계정 수·반복, 운영사=공유 IP 등)
-5. 필요 시 **HTTP 로그 ON** → Request 헤더에서 `X-Forwarded-For` 확인
-6. P1/P2/P3는 단건 실행·설명용
+3. 왼쪽에서 하나만 고름
+   - **정상** `customer = order` (기본 계정 50 · XFF 50)
+   - **공격** `customer ≠ order` (기본 계정 50 · XFF 50)
+   - **운영사** 계정 풀 + 자기 주문 + 공유 IP 개수
+4. HTTP 로그 ON → Request 헤더에서 `X-Forwarded-For` 확인
 
 > Incident 탐지 ≠ 자동 차단. XC에서 Protection / Rate Limit / Block 적용 후, 로그 ON으로 응답이 막히는지 확인하세요.
 
@@ -115,18 +113,17 @@ python3 serve_lab.py
 cd scenarios
 python3 -m pip install -r requirements.txt
 
-python3 run_bola.py --base http://192.168.47.81 --batch benign --repeat 300
-python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 40 --matched-rounds 2
-python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264 --operator-shared-ips 1
-python3 run_bola.py --base http://192.168.47.81 --batch attack --repeat 1 --http-log
+python3 run_bola.py --base http://192.168.47.81 --scenario normal_orders --users 50
+python3 run_bola.py --base http://192.168.47.81 --scenario attack_orders --users 50
+python3 run_bola.py --base http://192.168.47.81 --scenario operator_orders --operator-customers 50 --operator-shared-ips 1
 ```
 
 | 플래그 | 의미 |
 |--------|------|
-| `--batch benign\|attack\|all` | 일괄 세트 |
-| `--repeat N` | 세트 반복 |
-| `--matched-customers N` | 매칭 학습 계정 수 (=서로 다른 XFF 수, 권장 ≥30) |
-| `--operator-shared-ips N` | 운영사 공유 IP 개수 (기본 1) |
+| `--users N` | 정상/공격 계정 수 (=XFF 수, 기본 50) |
+| `--rounds N` | 정상/공격 사이클 반복 |
+| `--operator-customers N` | 운영사 계정 풀 |
+| `--operator-shared-ips N` | 운영사 공유 XFF 개수 (기본 1) |
 | `--http-log` | 상세 `*.http.jsonl` |
 
 ---

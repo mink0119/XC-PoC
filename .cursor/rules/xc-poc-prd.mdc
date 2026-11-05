@@ -1,5 +1,5 @@
 ---
-description: Keep XC-PoC work aligned with docs/PRD.md (P1/P2/P3, local attacker, Pet Shop target only)
+description: Keep XC-PoC work aligned with docs/PRD.md (normal/attack/operator, local attacker, Pet Shop target only)
 alwaysApply: true
 ---
 
@@ -18,15 +18,17 @@ Before changing this repo, read and follow `docs/PRD.md`.
   - Optional: same PoC host via Docker on **port 8765** (`attack-lab` container) — never merge into Pet Shop :80.
 - **Do not** put real customer/securities product names or real Open API paths into product UI/code. Map concepts onto Pet Shop (`customer_id`, `order`, `accountNo`).
 
-## Scenario groups (keep separated)
+## Scenario groups (only three)
 
-| Group | Meaning | Examples |
-|-------|---------|----------|
-| **P1** | Object-level BOLA | path cross-access, **Body `accountNo`**, ID enum |
-| **P2** | Identity / false-positive | cyclic IDs, fixed ID+IP change, token reissue, `operator_code` ON/OFF |
-| **P3** | Behaviour shift | benign self then abrupt foreign probe |
-| baseline | Catalog / self-order / **matched_order_learn** (`customer_id` N → `/orders/N` for XC private-resource vs `{DYN}`) | |
-- Order ownership is **1:1** (`ORDERS_PER_CUSTOMER=1`, `order_id == customer_id`) so matched learning traffic shares the same numeric id in JWT and path.
+| Group | Meaning | Key |
+|-------|---------|-----|
+| **정상** | `customer_id` N → `GET /orders/N`, XFF 1:1 (default ≥50 users) | `normal_orders` |
+| **공격** | `customer_id` N → `GET /orders/M` with M≠N (path only, no `/2` side paths) | `attack_orders` |
+| **운영사** | Fixed customer pool, each hits own order, **shared IP count** configurable | `operator_orders` |
+
+- Order ownership is **1:1** (`order_id == customer_id`).
+- Local label: match → `benign`, mismatch → `bola`. Do **not** treat `operator_code` as authorization.
+- Body `accountNo` scenarios are deferred.
 
 IP change ≠ BOLA. BOLA = access to an object the subject should not own.
 

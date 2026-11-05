@@ -20,15 +20,15 @@
 | 3 | IP·토큰이 바뀌어도 동일 운용 주체로 추적 가능한가? |
 | 4 | OOB(미러/BIG-IP 연계)에서 어디까지 보이는가? |
 
-고객이 “BOLA”라고 부르는 요구에는 **두 문제가 섞여 있다. 반드시 분리한다.**
+랩 시나리오는 **세 갈래**로만 둔다.
 
-| 구분 | 의미 | 이 랩에서의 대응 |
-|------|------|------------------|
-| **P1 객체 BOLA** | 인증 주체가 권한 없는 객체(계좌/주문 등)에 접근 | 교차 객체 조회, Body 필드 객체 조회 |
-| **P2 식별·오탐** | 다중 ID / IP 변경 / 토큰 재발급을 공격으로 오인하지 않는지 | 순환·고정·토큰 재발급 + operator_code ON/OFF |
-| **P3 이상행위** | 정상 순환과 다른 탐색·주문 패턴 | 정상 순환 직후 타인 객체 연속 탐색 등 |
+| 구분 | 의미 | 랩 키 |
+|------|------|-------|
+| **정상** | `customer_id` = path `/orders/{id}` | `normal_orders` |
+| **공격** | `customer_id` ≠ path `/orders/{id}` | `attack_orders` |
+| **운영사(정상·오탐)** | 계정 풀 순환 + 자기 주문 + **공유 IP** | `operator_orders` |
 
-IP 변경 자체는 BOLA가 아니다. BOLA는 **권한 없는 객체 접근**이다.
+Body Private Resource(`accountNo`)는 추후. IP 변경 자체는 BOLA가 아니다.
 
 ## 3. 제품 범위
 
@@ -39,7 +39,7 @@ IP 변경 자체는 BOLA가 아니다. BOLA는 **권한 없는 객체 접근**�
   - 고객 실명·증권 도메인 명칭은 UI/코드에 넣지 않는다.
 - **로컬 공격 실행기** (`scenarios/serve_lab.py`, `run_bola.py`) = 트래픽 생성·라벨·요청/응답 로그.
 - XC가 학습·탐지할 **정상/공격 패턴 재현**.
-- Body에 들어가는 **Private Resource 유사 필드** (`accountNo`) 검증용 API.
+- Path `/orders/{id}` 매칭·불일치 트래픽. (Body `accountNo` 는 추후)
 - PoC 엔지니어용 **시나리오 설명·흐름·예시**.
 
 ### Out of scope (이 랩이 직접 증명하지 않음)
@@ -68,29 +68,22 @@ OOB vs Inline 역할은 README/시나리오 안내 문구로만 명시한다.
 - 공유 PoC 호스트에서는 **별도 포트(기본 8765) Docker**로 lab UI를 띄울 수 있다. Pet Shop(API :80)과 프로세스를 섞지 않는다.
 - 대상 서버는 CORS를 허용해 브라우저에서 lab → API 호출을 지원한다.
 
-## 5. 시나리오 맵 (P1–P6)
+## 5. 시나리오 맵
 
-| ID | 그룹 | 랩 시나리오 키 | 기대 라벨 | 검증 질문 |
-|----|------|----------------|-----------|-----------|
-| P1a | P1 BOLA | `cross_customer_bola` | bola | Path 객체 교차 접근을 잡는가? |
-| P1b | P1 BOLA | `account_body_bola` | bola | **Request Body**의 `accountNo`를 Private Resource로 보는가? |
-| P1c | P1 BOLA | `id_enumeration` | bola | 연속 ID 열거를 이상/BOLA로 보는가? |
-| P2a | P2 오탐 | `operator_cyclic` | benign | 다계정 순환을 공격으로 오인하지 않는가? |
-| P2b | P2 오탐 | `operator_fixed` | benign | 동일 계정·IP 변경을 오인하지 않는가? |
-| P2c | P2 오탐 | `access_token_reissue` | benign | 24h 토큰 재발급을 신규 공격자로 보지 않는가? |
-| P2d | P2 오탐 | `operator_code` 토글 | — | Claim 없을 때(현재) vs 있을 때(미래) 비교 |
-| P3a | P3 이상 | `abnormal_probe` | mixed | 정상 자기조회 후 타인 객체 급탐색을 구분하는가? |
-| — | baseline | `public_catalog`, `self_order`, `matched_order_learn`, `matched_account_learn` | benign | Path `/orders/{id}` · Body `accountNo` 매칭 학습 (`customer_id` 응답 필드 포함) |
-| P4–P6 | 문서 | — | — | Discovery·민감정보·Inline 차단은 XC/별도 Inline 환경. 랩은 민감 필드가 든 응답을 **제공**만 함 |
+| 키 | 기대 | 검증 질문 |
+|----|------|-----------|
+| `normal_orders` | benign | 매칭 주문 + ≥50 XFF 정상 학습되는가? |
+| `attack_orders` | bola | 불일치 주문(`/orders/{id}` only)을 BOLA로 보는가? |
+| `operator_orders` | benign | 다계정·공유 IP를 공격으로 오인하지 않는가? |
+
+라벨 판정: **오직** `JWT customer_id == order path id`. `operator_code`는 라벨에 쓰지 않는다.
 
 ### 학습 기간
 
 BOLA/행위 분석은 **학습 트래픽·시간이 필요**하다.  
-시나리오를 돌린 직후 XC에 이벤트가 없다고 해서 “미지원”으로 단정하지 않는다. UI에 이 문구를 유지한다.
+시나리오를 돌린 직후 XC에 이벤트가 없다고 해서 “미지원”으로 단정하지 않는다.
 
-User Identification이 **IP**이면 학습에 보통 **≥30 distinct client**가 필요하다.  
-일반(매칭 학습 등)은 **customer마다 X-Forwarded-For 1:1**. 운영사(`operator_cyclic`)만 다계정·공유 IP.  
-랩 UI는 시나리오마다 **필요한 옵션만** 표시한다.
+User Identification이 **IP**이면 정상/공격은 **계정마다 XFF 1:1**(기본 50). 운영사만 공유 IP 개수를 조절한다.
 
 ## 6. 데이터·명명 규칙
 
@@ -101,7 +94,7 @@ User Identification이 **IP**이면 학습에 보통 **≥30 distinct client**�
 
 ## 7. UX 원칙 (로컬 GUI)
 
-1. 시나리오는 **P1 / P2 / P3 / 기본** 그룹으로 나열.
+1. 시나리오는 **정상 / 공격 / 운영사** 세 그룹만.
 2. **선택한 시나리오에 필요한 옵션만** 표시.
 3. 이름·설명은 엔지니어가 바로 이해하게 (정상·오탐 검토·공격).
 4. HTTP 로그의 요청/응답 칸에는 **무슨 정보인지 제목**을 붙인다.
@@ -164,9 +157,9 @@ User Identification이 **IP**이면 학습에 보통 **≥30 distinct client**�
 
 | 상태 | 항목 |
 |------|------|
-| Done | 로컬 GUI/CLI, P1 path BOLA, P2 cyclic/fixed/token, operator_code, HTTP 로그 |
-| Now | PRD 고정, Body `accountNo` BOLA(P1b), P3 abnormal_probe, UI 그룹·학습 안내, **matched_order_learn**, Code Base Integration 스택 고정(Flask) |
-| Next | Code Base Integration 실연동 체크리스트(콘솔 단계·대기시간), 민감정보 패턴 응답 보강, Inline 체크리스트 문서 |
+| Done | 로컬 GUI/CLI, **normal/attack/operator** 3시나리오, XFF 규칙, HTTP 로그, Flask Code Discovery 스택 |
+| Now | Body `accountNo` 시나리오(추후), Code Base Integration 실연동 체크리스트 |
+| Next | 민감정보 패턴 응답 보강, Inline 체크리스트 문서 |
 
 ## 13. 참고
 

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>BOLA 시나리오 실행기 (로컬)</title>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
-  <style>
+<style>
     :root {
       --bg: #0b1220;
       --panel: #121a2b;
@@ -372,20 +372,21 @@
 </head>
 <body>
   <header>
-    <div class="badge">로컬 트래픽 생성기 · 탐지는 F5 XC · 방어는 앱이 아님</div>
-    <h1>BOLA / 이상행위 시나리오 실행기</h1>
+    <div class="badge">로컬 트래픽 생성기 · 탐지는 F5 XC</div>
+    <h1>BOLA 시나리오 실행기</h1>
     <p class="lead">
-      목표는 “탐지 화면 한 장”이 아니라 <strong>정상 다중 ID·IP 패턴 vs 비정상 객체 접근</strong>을 구분할 수 있는지 검증하는 트래픽을 만드는 것입니다.
-      왼쪽 맨 위 <strong>일괄트래픽(학습)</strong>(정상 학습 · 비정상 · 전체)이 실행 메뉴입니다. 그 아래 P1/P2/P3는 설명·단건 실행용입니다.
-      BOLA는 XC 학습 기간이 필요할 수 있어, 실행 직후 이벤트가 없다고 미지원으로 단정하지 마세요.
-      상세 방향: <code>docs/PRD.md</code>
+      시나리오는 세 가지뿐입니다.
+      <strong>정상</strong> = customer와 같은 주문 번호 ·
+      <strong>공격</strong> = customer와 다른 주문 번호 ·
+      <strong>운영사</strong> = 정해진 계정 풀 + 공유 IP로 자기 주문만.
+      XC 학습 시간이 필요할 수 있습니다. 상세: <code>docs/SCENARIOS.md</code>
     </p>
   </header>
 
   <div class="layout">
     <aside class="panel">
-      <h2>메뉴</h2>
-      <p class="side-hint"><b>일괄트래픽(학습)</b>만 학습/공격 세트 실행입니다. 아래 P1~P3는 단건 시나리오입니다.</p>
+      <h2>시나리오</h2>
+      <p class="side-hint">선택한 항목에 필요한 옵션만 오른쪽에 표시됩니다.</p>
       <div class="scenario-list" id="scenarioList"></div>
     </aside>
 
@@ -396,140 +397,89 @@
           <label class="field" style="grid-column: 1 / -1; max-width: 520px;">
             <strong>대상 서버 주소 (Pet Shop)</strong>
             <input id="base" type="text" value="http://ncurity-test.local" />
-            <span class="opt-help">트래픽을 보낼 Pet Shop URL (가능하면 XC VIP). 기본: http://ncurity-test.local</span>
           </label>
         </div>
         <div class="toggle-block">
           <label class="toggle">
             <input id="enforceOwnership" type="checkbox" />
             <span>
-              <strong>대상 서버 소유권 검사 (정상 API 모드)</strong>
+              <strong>대상 서버 소유권 검사</strong>
               <span class="opt-help" style="display:block;margin-top:4px">
-                <b>끄기(기본)</b> — 소유권 미검사 → 남의 객체도 HTTP 200 (XC BOLA PoC).<br />
-                <b>켜기</b> — JWT <code>customer_id</code> vs 소유자 비교, 남이면 <code>403</code>.
+                끄기(기본)=남의 주문도 200 (XC PoC). 켜기=불일치 시 403.
               </span>
             </span>
           </label>
         </div>
       </section>
 
-      <section class="panel batch-panel" id="batchPanel" hidden>
-        <h2 id="batchPanelTitle">일괄트래픽(학습)</h2>
-        <p class="batch-lead" id="batchPanelLead"></p>
-        <div class="batch-opts">
-          <label class="field learn-field">
-            <strong>세트 반복 횟수</strong>
-            <input id="batchRounds" type="number" min="1" max="2000" value="300" />
-            <span class="opt-help" id="batchRoundsHelp">XC 학습(정상)은 보통 300회. 로그는 아래 옵션에서 켜/끌 수 있습니다.</span>
-          </label>
-          <div class="row batch-tuning" id="batchTuning">
-            <label class="field" data-batch-opt="matched">
-              <strong>학습 계정 수</strong>
-              <input id="matchedCustomers" type="number" min="1" max="600" value="40" />
-              <span class="opt-help">권장 ≥30. 계정마다 주문 매칭 + 서로 다른 X-Forwarded-For 자동.</span>
-            </label>
-            <label class="field" data-batch-opt="matched">
-              <strong>매칭 1회 분량 반복</strong>
-              <input id="matchedRounds" type="number" min="1" max="500" value="1" />
-              <span class="opt-help">계정 1..N 전체를 몇 바퀴 돌릴지</span>
-            </label>
-            <label class="field" data-batch-opt="enum">
-              <strong>주문번호 열거 개수</strong>
-              <input id="enumCount" type="number" min="1" max="100" value="10" />
-            </label>
-          </div>
-          <div class="toggle-block">
-            <label class="toggle">
-              <input id="batchHttpLog" type="checkbox" />
-              <span>
-                <strong>HTTP 요청/응답 로그 남기기</strong>
-                <span class="opt-help" style="display:block;margin-top:4px">
-                  끄기(기본)=카운트만. 켜기=아래 패널에 request/response (X-Forwarded-For 확인용).
-                </span>
-              </span>
-            </label>
-          </div>
-        </div>
-        <div class="actions">
-          <button type="button" class="run learn" id="batchRunBtn">이 세트 실행</button>
-          <button type="button" class="ghost" id="stopLearnBtn" disabled>중지</button>
-          <button type="button" class="ghost" id="pingBtn">대상 서버 연결 확인</button>
-          <span class="status" id="status">왼쪽에서 일괄트래픽(학습)을 고르세요</span>
-        </div>
-      </section>
-
-      <section class="panel options" id="scenarioPanel" hidden>
-        <h2>단건 시나리오 실행</h2>
+      <section class="panel options" id="scenarioPanel">
+        <h2 id="scenarioPanelTitle">시나리오 실행</h2>
+        <p class="batch-lead" id="scenarioLead"></p>
         <div class="scenario-opts" id="scenarioOpts">
-          <p class="label" id="scenarioOptsLabel">이 시나리오 설정</p>
           <div class="row" id="scenarioOptsRow">
-            <label class="field opt-slot" data-opt="matchedCustomers" hidden>
-              <strong>계정 수</strong>
-              <input id="matchedCustomersSingle" type="number" min="1" max="600" value="40" />
-              <span class="opt-help">권장 ≥30. 계정 N → 주문 N + X-Forwarded-For 도 계정마다 다름.</span>
+            <label class="field opt-slot" data-opt="users" hidden>
+              <strong>계정 수 (=서로 다른 XFF)</strong>
+              <input id="users" type="number" min="2" max="600" value="50" />
+              <span class="opt-help">기본 50. 계정마다 X-Forwarded-For 가 다릅니다.</span>
             </label>
-            <label class="field opt-slot" data-opt="matchedRounds" hidden>
+            <label class="field opt-slot" data-opt="rounds" hidden>
               <strong>반복 횟수</strong>
-              <input id="matchedRoundsSingle" type="number" min="1" max="500" value="1" />
-              <span class="opt-help">1..N 전체를 몇 바퀴 (예: 계정 40 × 반복 10 = 400건)</span>
+              <input id="rounds" type="number" min="1" max="500" value="1" />
+              <span class="opt-help">1..N 전체를 몇 바퀴</span>
             </label>
-            <label class="field opt-slot" data-opt="cyclicIds" hidden>
-              <strong>운영사가 쓰는 계정 수</strong>
-              <input id="cyclicIdsSingle" type="number" min="1" max="500" value="264" />
+            <label class="field opt-slot" data-opt="operatorCustomers" hidden>
+              <strong>운영사 계정 풀</strong>
+              <input id="operatorCustomers" type="number" min="1" max="600" value="50" />
+              <span class="opt-help">이 개수의 customer_id 만 순환 사용 (1..N)</span>
             </label>
-            <label class="field opt-slot" data-opt="cyclicSample" hidden>
+            <label class="field opt-slot" data-opt="operatorRequests" hidden>
               <strong>요청 횟수</strong>
-              <input id="cyclicSampleSingle" type="number" min="1" max="200" value="40" />
+              <input id="operatorRequests" type="number" min="1" max="5000" value="50" />
             </label>
             <label class="field opt-slot" data-opt="operatorSharedIps" hidden>
-              <strong>운영사 공유 IP 개수</strong>
-              <input id="operatorSharedIpsSingle" type="number" min="1" max="16" value="1" />
-              <span class="opt-help">여러 계정을 이 IP(들)로만 쏨. 일반 사용자 패턴과 반대.</span>
-            </label>
-            <label class="field opt-slot" data-opt="fixedSample" hidden>
-              <strong>IP 변경 횟수</strong>
-              <input id="fixedSampleSingle" type="number" min="1" max="50" value="6" />
-              <span class="opt-help">같은 계정으로 X-Forwarded-For 만 바꿈</span>
-            </label>
-            <label class="field opt-slot" data-opt="enumCount" hidden>
-              <strong>주문번호 몇 개까지</strong>
-              <input id="enumCountSingle" type="number" min="1" max="100" value="10" />
+              <strong>공유 IP 개수</strong>
+              <input id="operatorSharedIps" type="number" min="1" max="16" value="1" />
+              <span class="opt-help">운영사 NAT: 1개면 전 요청 같은 XFF. 늘리면 그 개수로만 순환.</span>
             </label>
           </div>
           <div class="toggle-block opt-slot" data-opt="operatorCode" hidden>
             <label class="toggle">
-              <input id="operatorCodeSingle" type="checkbox" />
-              <span>
-                <strong>토큰에 operator_code 넣기</strong>
-                <span class="opt-help" style="display:block;margin-top:4px">미래형 운용사 식별 claim (기본 OFF)</span>
+              <input id="operatorCode" type="checkbox" />
+              <span><strong>토큰에 operator_code 넣기</strong>
+                <span class="opt-help" style="display:block;margin-top:4px">라벨(정상/BOLA)에는 영향 없음. XC claim 실험용.</span>
               </span>
             </label>
           </div>
-          <p class="empty-opts" id="noScenarioOpts" hidden>이 시나리오는 추가 설정이 없습니다.</p>
+          <div class="toggle-block">
+            <label class="toggle">
+              <input id="httpLogOn" type="checkbox" checked />
+              <span><strong>HTTP 요청/응답 로그</strong>
+                <span class="opt-help" style="display:block;margin-top:4px">X-Forwarded-For 확인용. 대량이면 끄세요.</span>
+              </span>
+            </label>
+          </div>
+          <p class="empty-opts" id="noScenarioOpts" hidden>추가 설정 없음</p>
         </div>
         <div class="actions">
-          <button type="button" class="run" id="runBtn">이 시나리오 실행</button>
-          <button type="button" class="ghost" id="pingBtnSingle">대상 서버 연결 확인</button>
-          <span class="status" id="statusSingle">단건 시나리오를 선택하세요</span>
+          <button type="button" class="run" id="runBtn">실행</button>
+          <button type="button" class="ghost" id="stopBtn" disabled>중지</button>
+          <button type="button" class="ghost" id="pingBtn">대상 서버 확인</button>
+          <span class="status" id="status">시나리오를 고르세요</span>
         </div>
       </section>
 
-      <section class="panel detail" id="detail">
-        <h3 id="detailTitle">왼쪽에서 메뉴를 선택하세요</h3>
-        <p class="desc" id="detailDesc"></p>
-        <p class="why" id="whyBox" hidden></p>
+      <section class="panel">
+        <h2 id="detailTitle">설명</h2>
+        <p id="detailDesc"></p>
+        <p class="why" id="whyBox"></p>
         <div class="split">
-          <div class="box">
-            <h4 id="flowTitle">요청 흐름도</h4>
-            <p class="box-sub" id="flowSub">무엇을 보내는지 그림으로 보여 줍니다.</p>
-            <div class="mermaid" id="flowChart">flowchart LR
-              A[메뉴 선택] --> B[실행]
-            </div>
+          <div>
+            <h4 id="flowTitle">요청 흐름</h4>
+            <div class="mermaid" id="flowChart"></div>
           </div>
-          <div class="box">
-            <h4 id="exampleTitle">요청 예시 / 포함 시나리오</h4>
-            <p class="box-sub" id="exampleSub">일괄이면 포함 목록, 단건이면 HTTP 샘플입니다.</p>
-            <pre class="example" id="exampleBox">왼쪽에서 고르세요.</pre>
+          <div>
+            <h4>요청 예시</h4>
+            <pre class="example" id="exampleBox"></pre>
           </div>
         </div>
       </section>
@@ -541,38 +491,10 @@
             <thead>
               <tr>
                 <th>#</th><th>시나리오</th><th>기대</th><th>HTTP</th>
-                <th>출발 IP</th><th>계정</th><th>운영자</th><th>경로</th>
+                <th>XFF (source_ip)</th><th>customer</th><th>경로</th>
               </tr>
             </thead>
             <tbody id="rows"></tbody>
-          </table>
-        </div>
-      </section>
-
-      <section class="panel">
-        <div class="pill-row">
-          <h2 style="margin:0">JWT 디코드 (토큰 claim)</h2>
-          <span class="pill" id="tokenCount">0개</span>
-        </div>
-        <p class="opt-help">
-          발급·사용한 accessToken 의 payload 를 Base64url 디코드한 값입니다.
-          소유권 비교에 쓰는 <code>customer_id</code> / <code>operator_code</code> / <code>iat</code>·<code>exp</code> 를 여기서 확인하세요.
-          (서명 검증 없이 payload 만 표시)
-        </p>
-        <div class="scroll" id="tokenPanel">
-          <p class="opt-help" id="tokenEmpty">아직 토큰이 없습니다. 시나리오를 실행하면 여기에 쌓입니다.</p>
-          <table hidden id="tokenTable">
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>시나리오</th>
-                <th>customer_id</th>
-                <th>operator_code</th>
-                <th>iat → exp</th>
-                <th>전체 claim</th>
-              </tr>
-            </thead>
-            <tbody id="tokenRows"></tbody>
           </table>
         </div>
       </section>
@@ -585,26 +507,20 @@
           <button type="button" class="ghost" id="dlHttp">HTTP JSONL</button>
           <button type="button" class="ghost" id="clearLog">기록 비우기</button>
         </div>
-        <p class="opt-help">PoC 검증용. 보낸 요청과 받은 응답을 남깁니다. 아래 필터로 응답코드·URL 경로를 좁힐 수 있습니다.</p>
         <div class="http-filters">
           <label class="field">
             <strong>응답 코드</strong>
             <select id="httpFilterStatus">
               <option value="">전체</option>
               <option value="2xx">2xx</option>
-              <option value="3xx">3xx</option>
               <option value="4xx">4xx</option>
-              <option value="5xx">5xx</option>
               <option value="200">200</option>
-              <option value="401">401</option>
               <option value="403">403</option>
-              <option value="404">404</option>
-              <option value="429">429</option>
             </select>
           </label>
           <label class="field" style="flex:1; min-width:180px">
             <strong>URL 경로 포함</strong>
-            <input id="httpFilterPath" type="text" placeholder="예: /accounts/inquire 또는 orders" />
+            <input id="httpFilterPath" type="text" placeholder="orders" />
           </label>
           <button type="button" class="ghost" id="httpFilterClear" style="align-self:flex-end">필터 초기화</button>
         </div>
@@ -612,11 +528,8 @@
           <table>
             <thead>
               <tr>
-                <th>순번</th>
-                <th>시나리오</th>
-                <th>기대</th>
-                <th>보낸 요청 (Request)</th>
-                <th>받은 응답 (Response)</th>
+                <th>순번</th><th>시나리오</th><th>기대</th>
+                <th>보낸 요청</th><th>받은 응답</th>
               </tr>
             </thead>
             <tbody id="httpRows"></tbody>
@@ -629,25 +542,7 @@
   <script>
     mermaid.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose" });
 
-    // 1:1 → path /orders/{id} id == JWT customer_id (XC private-resource learn shape)
-    const ORDERS_PER_CUSTOMER = 1;
-    const PAYMENTS_PER_CUSTOMER = 1;
     const EXPECTED_LABEL = { benign: "정상", bola: "BOLA" };
-
-    function orderIdFor(customerId, slot = 0) {
-      return (customerId - 1) * ORDERS_PER_CUSTOMER + slot + 1;
-    }
-    function customerIdForOrder(orderId) {
-      return Math.floor((orderId - 1) / ORDERS_PER_CUSTOMER) + 1;
-    }
-    function paymentIdFor(customerId, slot = 0) {
-      return (customerId - 1) * PAYMENTS_PER_CUSTOMER + slot + 1;
-    }
-    function expectedLabel(customerId, operatorCode, ownerId, assignedIds) {
-      if (customerId === ownerId) return "benign";
-      if (operatorCode && assignedIds && assignedIds.includes(ownerId)) return "benign";
-      return "bola";
-    }
     function clamp(n, lo, hi) {
       if (!Number.isFinite(n)) return lo;
       return Math.min(hi, Math.max(lo, Math.trunc(n)));
@@ -655,447 +550,147 @@
     function expectedTag(expected) {
       return `<span class="tag ${expected}">${EXPECTED_LABEL[expected] || expected}</span>`;
     }
-
-    // group: baseline | P1 | P2 | P3  (see docs/PRD.md)
-    // options: inputs this scenario uses (besides always-visible target URL)
-    function accountNoFor(customerId) {
-      return String(10000000 + customerId);
+    function orderIdFor(customerId) { return customerId; }
+    function expectedLabel(customerId, ownerId) {
+      return customerId === ownerId ? "benign" : "bola";
     }
-
-    const SCENARIO_META = {
-      public_catalog: {
-        group: "baseline", groupLabel: "기본 · 베이스라인",
-        title: "정상 · 공개 상품 보기",
-        short: "로그인 없이 공개 API만",
-        expected: "benign", options: [],
-        desc: "상품·카테고리처럼 누구나 볼 수 있는 API만 호출합니다.",
-        why: "XC에 정상 공개 트래픽 기준선을 남길 때 씁니다.",
-        flow: `flowchart LR
-          L[이 PC] -->|공개 GET| T[Pet Shop]
-          T -->|200| L
-          L --> R[기대: 정상]`,
-        example: `GET /api/v1/products … → 정상 200 (토큰 없음)`,
-      },
-      self_order: {
-        group: "baseline", groupLabel: "기본 · 베이스라인",
-        title: "정상 · 내 주문 보기",
-        short: "자기 계정 주문만 조회",
-        expected: "benign", options: [],
-        desc: "로그인 후 본인 주문만 조회합니다.",
-        why: "정상 로그인 사용자 베이스라인입니다.",
-        flow: `flowchart TD
-          L[이 PC] -->|토큰 410| T[Pet Shop]
-          L -->|내 주문 GET| T
-          T -->|200| L
-          L --> R[기대: 정상]`,
-        example: `토큰 customer_id=410 → GET /orders/410 → 정상`,
-      },
-      matched_order_learn: {
-        group: "baseline", groupLabel: "기본 · 베이스라인",
-        title: "정상 · customer↔주문 매칭 학습",
-        short: "계정마다 주문+IP 매칭",
-        expected: "benign", options: ["matchedCustomers", "matchedRounds"],
-        desc: "계정 N은 GET /orders/N 만 호출합니다. X-Forwarded-For 도 계정마다 자동으로 다릅니다(1:1). 소켓 IP는 같고 헤더만 바뀝니다.",
-        why: "XC가 orders/{id}를 Private Resource로 학습. IP 식별이면 계정 수를 ≥30으로.",
-        flow: `flowchart TD
-          C1[cid1 + XFF1] --> O1["/orders/1"]
-          C2[cid2 + XFF2] --> O2["/orders/2"]
-          CN[cidN + XFFN] --> ON["/orders/N"]`,
-        example: `cid=1 → /orders/1 · X-Forwarded-For: 198.51.100.1
-cid=2 → /orders/2 · X-Forwarded-For: 198.51.100.2
-(요약 표 source_ip / HTTP 로그 헤더에서 확인)`,
-      },
-      matched_account_learn: {
-        group: "baseline", groupLabel: "기본 · 베이스라인",
-        title: "정상 · customer↔계좌 매칭 학습",
-        short: "계정마다 본인 accountNo+IP",
-        expected: "benign", options: ["matchedCustomers", "matchedRounds"],
-        desc: "JWT customer_id=N → Body accountNo=10000000+N. X-Forwarded-For 도 계정마다 다름.",
-        why: "Body Private Resource(accountNo) 학습. P1b(타인 계좌)와 대조.",
-        flow: `flowchart TD
-          T1[cid=N + XFFN] -->|POST inquire| API[Pet Shop]
-          T1 -->|accountNo=10000000+N| API`,
-        example: `cid=1 → accountNo=10000001 · XFF …100.1
-cid=2 → accountNo=10000002 · XFF …100.2`,
-      },
-      cross_customer_bola: {
-        group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
-        title: "P1a · Path로 남의 데이터 조회",
-        short: "URL 경로의 주문/결제 ID 교차 접근",
-        expected: "bola", options: [],
-        desc: "내 토큰으로 다른 사람 주문·결제·프로필·진료기록을 Path로 요청합니다.",
-        why: "고전적 BOLA. 소유권 검사 OFF면 200 유출(XC 관찰용), ON이면 서버가 403으로 막음(정상 API). XC 학습 시간이 필요할 수 있습니다.",
-        flow: `flowchart TD
-          L[공격자 토큰 410] --> T[Pet Shop]
-          L -->|GET 남의 주문/결제| T
-          T -->|200 유출| L
-          L --> R[기대: BOLA]`,
-        example: `GET /orders/1, /payments/1, /customers/1 → BOLA 200`,
-      },
-      account_body_bola: {
-        group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
-        title: "P1b · Body 계좌번호로 조회",
-        short: "accountNo 가 JSON Body에 있는 Private Resource",
-        expected: "bola", options: [],
-        desc: "경로가 아니라 요청 Body의 accountNo 로 잔고를 조회합니다. (실환경 계좌번호 Body 필드와 같은 형태)",
-        why: "XC가 Path뿐 아니라 Body Private Resource를 사용자와 묶어 BOLA로 보는지가 PoC 핵심 쟁점입니다.",
-        flow: `flowchart TD
-          L[토큰 410] -->|POST /accounts/inquire| T[Pet Shop]
-          L -->|Body accountNo=본인| T
-          L -->|Body accountNo=타인| T
-          T -->|200| L
-          L --> R[타인 → BOLA]`,
-        example: `POST /api/v1/accounts/inquire
-{ "accountNo": "10000001" }  ← 타인
-Authorization: Bearer (410)
-→ Body 객체 교차 접근 = BOLA`,
-      },
-      id_enumeration: {
-        group: "P1", groupLabel: "P1 · 객체 BOLA (권한 없는 객체)",
-        title: "P1c · 주문번호 연속 조회",
-        short: "ID를 1,2,3… 으로 올려 보기",
-        expected: "bola", options: ["enumCount"],
-        desc: "주문 ID를 연속 증가시키며 열거합니다.",
-        why: "객체 ID 추측·열거형 BOLA입니다.",
-        flow: `flowchart LR
-          L[토큰] --> A[주문1] --> B[주문2] --> C[주문N]
-          C --> R[BOLA]`,
-        example: `GET /orders/1 … N → 남의 것이면 BOLA`,
-      },
-      operator_cyclic: {
-        group: "P2", groupLabel: "P2 · 오탐·식별 (정상인데 헷갈리기 쉬움)",
-        title: "P2a · 여러 계정 돌아가며 조회",
-        short: "다계정 순환 · 각 계정은 자기 주문만",
-        expected: "benign", options: ["cyclicIds", "cyclicSample", "operatorSharedIps", "operatorCode"],
-        desc: "운영사 패턴: 여러 계정을 소수(기본 1개) 공유 IP로 조회. 각 계정은 자기 주문만. 일반 매칭 학습(계정마다 다른 IP)과 반대.",
-        why: "다계정+공유 IP가 XC에 공격으로 오인되는지(오탐) 검토.",
-        flow: `flowchart TD
-          A[계정1→주문1] --> B[계정2→주문2] --> C[계정N]
-          C --> R[각 요청 정상]`,
-        example: `다계정+공유 IP, 자기 주문만 → 라벨 정상 / XC 오탐 후보`,
-      },
-      operator_fixed: {
-        group: "P2", groupLabel: "P2 · 오탐·식별 (정상인데 헷갈리기 쉬움)",
-        title: "P2b · 같은 계정, IP만 바꿈",
-        short: "계정 고정 + 출발 IP 변경",
-        expected: "benign", options: ["fixedSample", "operatorCode"],
-        desc: "계정은 고정, X-Forwarded-For 만 바꿉니다.",
-        why: "IP 변경 자체를 공격으로 보면 안 됩니다. 식별·오탐 이슈입니다.",
-        flow: `flowchart LR
-          T[같은 토큰] --> A[IP1] --> B[IP2] --> C[IPn]
-          C --> R[정상]`,
-        example: `동일 계정 · 다른 IP → 정상`,
-      },
-      access_token_reissue: {
-        group: "P2", groupLabel: "P2 · 오탐·식별 (정상인데 헷갈리기 쉬움)",
-        title: "P2c · 하루마다 토큰 새로 받기",
-        short: "24h access_token 재발급",
-        expected: "benign", options: ["operatorCode"],
-        desc: "iat/exp만 바꾼 토큰을 날짜마다 발급해 자기 주문을 봅니다.",
-        why: "토큰 문자열만으로 매일 다른 사용자로 오인하지 않는지 확인합니다.",
-        flow: `flowchart TD
-          D0[day0 토큰] --> D1[day1] --> D2[day2]
-          D2 --> R[3개 문자열 다름 · 정상]`,
-        example: `일자별 토큰 3개 → 모두 자기 주문 · 정상`,
-      },
-      abnormal_probe: {
-        group: "P3", groupLabel: "P3 · 이상행위 (정상 후 급변)",
-        title: "P3a · 정상 조회 후 타인 급탐색",
-        short: "자기 주문 몇 건 → 갑자기 타인 주문 연속",
-        expected: "bola", options: [],
-        desc: "잠시 정상(자기 주문) 뒤에, 같은 토큰으로 타인 주문을 연속 조회합니다.",
-        why: "단순 호출량보다 “행위 전환”을 XC가 구분하는지 봅니다. P2 순환과 대조하세요.",
-        flow: `flowchart TD
-          N[자기 주문 정상] --> X[타인 주문 1..5]
-          X --> R[후반은 BOLA]`,
-        example: `GET 내 주문 ×2 → GET 남의 주문 ×5 → 후반 BOLA`,
-      },
-    };
-
-    const GROUP_ORDER = ["P1", "P2", "P3", "baseline"];
-
-    const RUNNERS = {};
-
-    const BATCH_META = {
-      batch_benign: {
-        mode: "benign",
-        group: "batch",
-        groupLabel: "일괄트래픽(학습)",
-        title: "정상 · XC 학습",
-        short: "정상 세트 × N (BOLA 제외)",
-        expected: "benign",
-        options: ["matched"],
-        defaultRounds: 300,
-        desc: "정상 시나리오만 반복해 XC 학습 baseline을 쌓습니다. 학습 계정 수=서로 다른 XFF 수(권장 ≥30).",
-        why: "학습은 정상 패턴만.",
-        flow: `flowchart TD
-          B[정상 세트] -->|×N| T[Pet Shop / XC]`,
-        example: "",
-      },
-      batch_attack: {
-        mode: "attack",
-        group: "batch",
-        groupLabel: "일괄트래픽(학습)",
-        title: "비정상 · BOLA / 이상행위",
-        short: "공격 세트 × N (학습 후)",
-        expected: "bola",
-        options: ["enum"],
-        defaultRounds: 1,
-        desc: "BOLA·열거·이상행위만. XC 학습이 끝난 뒤.",
-        why: "baseline 없이 비정상만 돌리면 해석이 어렵습니다.",
-        flow: `flowchart TD
-          A[비정상 세트] -->|×N| T[Pet Shop / XC]`,
-        example: "",
-      },
-      batch_all: {
-        mode: "all",
-        group: "batch",
-        groupLabel: "일괄트래픽(학습)",
-        title: "전체 시나리오",
-        short: "정상+비정상 전부 × N",
-        expected: "bola",
-        options: ["matched", "enum"],
-        defaultRounds: 1,
-        desc: "정상+비정상 한 바퀴. 데모·회귀용(순수 학습용 아님).",
-        why: "전체 패턴 재현.",
-        flow: `flowchart TD
-          A[전체 세트] -->|×N| T[Pet Shop / XC]`,
-        example: "",
-      },
-    };
-
-    function isBatchId(id) {
-      return Object.prototype.hasOwnProperty.call(BATCH_META, id);
-    }
-
-    function cfg() {
-      const batch = isBatchId(selectedId);
-      const num = (batchEl, singleEl, lo, hi) => {
-        const el = document.getElementById(batch ? batchEl : singleEl);
-        if (!el) return lo;
-        return clamp(Number(el.value), lo, hi);
-      };
-      const checked = (singleEl) => {
-        const el = document.getElementById(singleEl);
-        return !!(el && el.checked);
-      };
-      const matchedCustomers = num("matchedCustomers", "matchedCustomersSingle", 1, 600);
-      return {
-        base: (document.getElementById("base").value || "http://ncurity-test.local").replace(/\/$/, ""),
-        // batch: 학습 계정 수로 매칭·순환 규모를 맞춤. 단건 P2만 별도 입력.
-        matchedCustomers,
-        matchedRounds: num("matchedRounds", "matchedRoundsSingle", 1, 500),
-        cyclicIds: batch ? matchedCustomers : num("cyclicIds", "cyclicIdsSingle", 1, 500),
-        cyclicSample: batch ? Math.min(40, matchedCustomers) : num("cyclicSample", "cyclicSampleSingle", 1, 200),
-        fixedSample: batch ? 6 : num("fixedSample", "fixedSampleSingle", 1, 50),
-        enumCount: num("enumCount", "enumCountSingle", 1, 100),
-        operatorSharedIps: batch ? 1 : num("operatorSharedIps", "operatorSharedIpsSingle", 1, 16),
-        operatorCodeEnabled: batch ? false : checked("operatorCodeSingle"),
-        enforceOwnership: document.getElementById("enforceOwnership").checked,
-      };
-    }
-
-    /** 일반: customer_id → XFF 1:1. 운영사 공유 IP와 분리. */
     function userSourceIp(customerId) {
       const slot = Math.max(1, customerId) - 1;
       const a = slot % 508;
       if (a < 254) return "198.51.100." + (a + 1);
       return "203.0.113." + ((a - 254) + 1);
     }
-
     function operatorSharedIpList(count) {
       const n = Math.max(1, Math.min(16, Number(count) || 1));
       return Array.from({ length: n }, (_, i) => "203.0.113." + (200 + i));
     }
+    function mismatchedOrderId(customerId, userCount) {
+      let other = (customerId % userCount) + 1;
+      if (other === customerId) other = customerId === 1 ? 2 : 1;
+      return other;
+    }
+
+    const SCENARIO_META = {
+      normal_orders: {
+        group: "normal", groupLabel: "정상 트래픽",
+        title: "정상 · customer = order",
+        short: "계정 N → /orders/N · XFF도 계정마다 다름",
+        expected: "benign",
+        options: ["users", "rounds", "operatorCode"],
+        desc: "JWT customer_id 와 Path /orders/{id} 가 같습니다. 계정마다 다른 X-Forwarded-For(기본 50개).",
+        why: "XC Private Resource 학습·정상 baseline.",
+        flow: `flowchart LR
+          C1[cid1+XFF1] --> O1[/orders/1]
+          C2[cid2+XFF2] --> O2[/orders/2]`,
+        example: `cid=1 → GET /api/v1/orders/1 · XFF 198.51.100.1
+cid=2 → GET /api/v1/orders/2 · XFF 198.51.100.2`,
+      },
+      attack_orders: {
+        group: "attack", groupLabel: "공격 트래픽",
+        title: "공격 · customer ≠ order",
+        short: "계정 N → 남의 /orders/M · XFF 계정마다 다름",
+        expected: "bola",
+        options: ["users", "rounds"],
+        desc: "토큰의 customer_id 와 다른 주문 번호만 요청합니다. Path는 /api/v1/orders/{id} 만 사용합니다.",
+        why: "객체 BOLA. 소유권 OFF면 200 유출(XC 관찰), ON이면 403.",
+        flow: `flowchart LR
+          C1[cid1] -->|GET| X[/orders/2]
+          C2[cid2] -->|GET| Y[/orders/3]`,
+        example: `cid=1 → GET /api/v1/orders/2  (불일치 → BOLA)
+cid=2 → GET /api/v1/orders/3`,
+      },
+      operator_orders: {
+        group: "operator", groupLabel: "운영사 (정상·오탐)",
+        title: "정상 · 운영사 공유 IP",
+        short: "정해진 계정 풀 순환 · 자기 주문 · IP는 공유",
+        expected: "benign",
+        options: ["operatorCustomers", "operatorRequests", "operatorSharedIps", "operatorCode"],
+        desc: "1..풀크기 customer_id 를 돌아가며 쓰고, 각 계정은 자기 주문만 조회합니다. XFF는 공유 IP 개수로만 순환합니다(계정마다 IP를 바꾸지 않음).",
+        why: "다계정+소수 IP 정상 패턴이 공격으로 오인되는지 검토.",
+        flow: `flowchart TD
+          P[계정풀 1..N] --> S[공유 IP 1..K]
+          S --> O[각 cid → /orders/cid]`,
+        example: `풀=50, 공유IP=1
+cid=1 → /orders/1 · XFF 203.0.113.200
+cid=2 → /orders/2 · XFF 203.0.113.200 (동일)`,
+      },
+    };
+
+    const ORDER = ["normal_orders", "attack_orders", "operator_orders"];
+    const RUNNERS = {};
+    let selectedId = "normal_orders";
+    let busy = false;
+    let learnAbort = false;
+    let learnQuiet = false;
+    let currentScenario = null;
+    let flowRender = 0;
+    let lastSummaryRows = [];
+    const httpLog = { seq: 0, entries: [] };
+
+    function cfg() {
+      return {
+        base: (document.getElementById("base").value || "http://ncurity-test.local").replace(/\/$/, ""),
+        users: clamp(Number(document.getElementById("users").value), 2, 600),
+        rounds: clamp(Number(document.getElementById("rounds").value), 1, 500),
+        operatorCustomers: clamp(Number(document.getElementById("operatorCustomers").value), 1, 600),
+        operatorRequests: clamp(Number(document.getElementById("operatorRequests").value), 1, 5000),
+        operatorSharedIps: clamp(Number(document.getElementById("operatorSharedIps").value), 1, 16),
+        operatorCodeEnabled: document.getElementById("operatorCode").checked,
+        enforceOwnership: document.getElementById("enforceOwnership").checked,
+        httpLogOn: document.getElementById("httpLogOn").checked,
+      };
+    }
 
     function authHeaders(extra) {
       const h = Object.assign({}, extra || {});
-      if (cfg().enforceOwnership) h["X-Enforce-Ownership"] = "1";
-      else h["X-Enforce-Ownership"] = "0";
+      h["X-Enforce-Ownership"] = cfg().enforceOwnership ? "1" : "0";
       return h;
     }
 
-    const httpLog = { seq: 0, entries: [] };
-    const tokenLog = { seq: 0, entries: [] };
-    let lastSummaryRows = [];
-    let currentScenario = null;
-    let selectedId = "batch_benign";
-    let busy = false;
-    let flowRender = 0;
-    /** 일괄 실행: quiet=상세 로그 생략, deferRender=로그는 쌓되 UI는 가끔만 갱신 */
-    let learnQuiet = false;
-    let learnDeferRender = false;
-    let learnAbort = false;
-    let learnHttpCount = 0;
-    let learnOkCount = 0;
-    let learnFailCount = 0;
-
-    function sleep(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
-    }
-
-    function headersToObject(headers) {
-      const out = {};
-      if (!headers || !headers.forEach) return out;
-      headers.forEach((v, k) => { out[k] = v; });
-      return out;
-    }
-
-    function b64urlToJson(part) {
-      try {
-        const pad = "=".repeat((4 - (part.length % 4)) % 4);
-        const b64 = (part + pad).replace(/-/g, "+").replace(/_/g, "/");
-        const json = decodeURIComponent(
-          Array.prototype.map.call(atob(b64), (c) =>
-            "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2)
-          ).join("")
-        );
-        return JSON.parse(json);
-      } catch (_) {
-        return null;
-      }
-    }
-
     function decodeJwt(token) {
-      if (!token || typeof token !== "string") return null;
-      const parts = token.split(".");
-      if (parts.length !== 3) return null;
-      return {
-        header: b64urlToJson(parts[0]),
-        payload: b64urlToJson(parts[1]),
-        signaturePreview: parts[2].slice(0, 16) + "…",
-      };
-    }
-
-    function bearerFromHeaders(headers) {
-      if (!headers) return null;
-      const raw = headers.Authorization || headers.authorization;
-      if (!raw || typeof raw !== "string") return null;
-      const m = raw.match(/^Bearer\s+(.+)$/i);
-      return m ? m[1].trim() : null;
-    }
-
-    function formatEpoch(sec) {
-      if (sec == null || !Number.isFinite(Number(sec))) return "—";
       try {
-        return new Date(Number(sec) * 1000).toISOString().replace(".000Z", "Z");
-      } catch (_) {
-        return String(sec);
-      }
+        const part = token.split(".")[1];
+        const pad = "=".repeat((4 - (part.length % 4)) % 4);
+        return JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/") + pad));
+      } catch (_) { return null; }
     }
 
-    function noteToken(token, scenario, source) {
-      const decoded = decodeJwt(token);
-      if (!decoded || !decoded.payload) return null;
-      tokenLog.seq += 1;
-      const entry = {
-        seq: tokenLog.seq,
-        ts: new Date().toISOString(),
-        scenario: scenario || currentScenario,
-        source: source || "token",
-        tokenPreview: token.slice(0, 24) + "…",
-        header: decoded.header,
-        payload: decoded.payload,
-      };
-      tokenLog.entries.push(entry);
-      renderTokens();
-      return entry;
-    }
-
-    function addExchange(payload) {
-      if (learnQuiet) {
-        learnHttpCount += 1;
-        if (payload.status >= 200 && payload.status < 400) learnOkCount += 1;
-        else learnFailCount += 1;
-        return null;
-      }
-      httpLog.seq += 1;
-      const entry = {
-        seq: httpLog.seq,
-        ts: new Date().toISOString(),
-        scenario: payload.scenario != null ? payload.scenario : currentScenario,
-        expected: payload.expected || null,
-        request: {
-          method: payload.method,
-          url: payload.url,
-          headers: payload.requestHeaders || {},
-          body: payload.requestBody != null ? payload.requestBody : null,
-        },
-        response: {
-          status: payload.status,
-          headers: payload.responseHeaders || {},
-          body: payload.responseBody,
-        },
-      };
-      if (payload.meta) entry.meta = payload.meta;
-
-      const reqToken = bearerFromHeaders(entry.request.headers);
-      if (reqToken) {
-        const d = decodeJwt(reqToken);
-        if (d) entry.request.jwt = d;
-      }
-      const respToken = entry.response.body && entry.response.body.accessToken;
-      if (typeof respToken === "string") {
-        const d = decodeJwt(respToken);
-        if (d) {
-          entry.response.jwt = d;
-          noteToken(respToken, entry.scenario, "issued");
-        }
-      }
-
-      httpLog.entries.push(entry);
-      if (learnDeferRender) {
-        if (httpLog.seq % 25 === 0) renderHttp();
-      } else {
-        renderHttp();
-      }
-      return entry;
-    }
-
-    async function parseBody(resp) {
-      const text = await resp.text();
-      if (!text) return null;
-      try { return JSON.parse(text); } catch (_) { return text.slice(0, 4000); }
-    }
-
-    async function loggedFetch(method, url, { headers, body, expected, meta, scenario } = {}) {
-      const reqHeaders = authHeaders(headers ? { ...headers } : {});
-      const init = { method, headers: reqHeaders };
-      let requestBody = null;
-      if (body != null) {
-        requestBody = body;
-        init.body = JSON.stringify(body);
-        if (!reqHeaders["Content-Type"]) reqHeaders["Content-Type"] = "application/json";
+    async function loggedFetch(method, url, opts) {
+      opts = opts || {};
+      const headers = authHeaders(opts.headers || {});
+      const init = { method, headers };
+      if (opts.body !== undefined) {
+        headers["Content-Type"] = headers["Content-Type"] || "application/json";
+        init.body = JSON.stringify(opts.body);
       }
       const resp = await fetch(url, init);
-      const responseBody = await parseBody(resp);
-      addExchange({
-        scenario: scenario != null ? scenario : currentScenario,
-        expected, method, url,
-        requestHeaders: reqHeaders,
-        requestBody,
-        status: resp.status,
-        responseHeaders: headersToObject(resp.headers),
-        responseBody,
-        meta,
-      });
-      return { status: resp.status, body: responseBody, ok: resp.ok };
+      let body = null;
+      const text = await resp.text();
+      try { body = text ? JSON.parse(text) : null; } catch (_) { body = text.slice(0, 4000); }
+      if (!learnQuiet && cfg().httpLogOn) {
+        httpLog.seq += 1;
+        httpLog.entries.push({
+          seq: httpLog.seq,
+          scenario: currentScenario,
+          expected: opts.expected || null,
+          request: { method, url, headers, body: opts.body || null },
+          response: { status: resp.status, headers: Object.fromEntries(resp.headers.entries()), body },
+        });
+        renderHttp();
+      }
+      return { ok: resp.ok, status: resp.status, body, headers: resp.headers };
     }
 
-    async function issueToken(base, customerId, operatorCode, issuedAt) {
+    async function issueToken(base, customerId, operatorCode) {
       const body = { customer_id: customerId };
       if (operatorCode) body.operator_code = operatorCode;
-      if (issuedAt != null) body.issued_at = issuedAt;
-      const { status, body: data, ok } = await loggedFetch("POST", base + "/api/v1/auth/token", {
-        headers: { "Content-Type": "application/json" },
-        body,
-        meta: { kind: "auth" },
-      });
-      if (!ok) throw new Error("token " + status + (data && data.message ? ": " + data.message : ""));
-      return data.accessToken;
+      const r = await loggedFetch("POST", base + "/api/v1/auth/token", { body, meta: { kind: "auth" } });
+      if (!r.ok) throw new Error("token HTTP " + r.status);
+      return r.body.accessToken;
     }
 
-    async function getPrivate(base, token, path, sourceIp, expected) {
+    async function getOrder(base, token, orderId, sourceIp, expected) {
+      const path = "/api/v1/orders/" + orderId;
       return loggedFetch("GET", base + path, {
         headers: {
           Authorization: "Bearer " + token,
@@ -1103,251 +698,73 @@ Authorization: Bearer (410)
           "X-Real-IP": sourceIp,
         },
         expected,
-        meta: { kind: "private_get", source_ip: sourceIp },
       });
     }
 
-    function push(rows, row) { rows.push(row); }
-
-    RUNNERS.public_catalog = async function (c, rows) {
-      currentScenario = "public_catalog";
-      const paths = ["/api/v1/products", "/api/v1/categories", "/api/v1/brands", "/api/v1/foods", "/api/v1/toys"];
-      for (const path of paths) {
-        const { status } = await loggedFetch("GET", c.base + path, { expected: "benign", meta: { kind: "catalog" } });
-        push(rows, { scenario: "public_catalog", expected: "benign", status, source_ip: "192.0.2.50", customer_id: null, operator_code: null, path });
-      }
-    };
-
-    RUNNERS.self_order = async function (c, rows) {
-      currentScenario = "self_order";
-      const customerId = 410;
-      const sourceIp = userSourceIp(customerId);
-      const token = await issueToken(c.base, customerId, null);
-      const path = "/api/v1/orders/" + orderIdFor(customerId);
-      const expected = expectedLabel(customerId, null, customerId);
-      const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-      push(rows, { scenario: "self_order", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: null, path });
-    };
-
-    RUNNERS.matched_order_learn = async function (c, rows) {
-      currentScenario = "matched_order_learn";
-      const n = c.matchedCustomers;
-      const rounds = c.matchedRounds;
+    RUNNERS.normal_orders = async function (c, rows) {
+      currentScenario = "normal_orders";
       const tokens = {};
-      for (let round = 1; round <= rounds; round++) {
-        for (let customerId = 1; customerId <= n; customerId++) {
+      for (let round = 1; round <= c.rounds; round++) {
+        for (let customerId = 1; customerId <= c.users; customerId++) {
+          if (learnAbort) return;
           if (!tokens[customerId]) {
-            tokens[customerId] = await issueToken(c.base, customerId, null);
+            const code = c.operatorCodeEnabled && customerId <= 500 ? "OP_LARGE" : null;
+            tokens[customerId] = await issueToken(c.base, customerId, code);
           }
-          const token = tokens[customerId];
+          const orderId = orderIdFor(customerId);
+          const expected = expectedLabel(customerId, orderId);
           const sourceIp = userSourceIp(customerId);
-          // XC learn shape: JWT customer_id === path /orders/{id}
-          const orderId = customerId;
-          const path = "/api/v1/orders/" + orderId;
-          const expected = expectedLabel(customerId, null, orderId);
-          const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-          push(rows, {
-            scenario: "matched_order_learn",
-            expected,
-            status,
-            source_ip: sourceIp,
-            customer_id: customerId,
-            operator_code: null,
-            path,
-            notes: "round " + round + "/" + rounds + " · XFF=" + sourceIp,
+          const { status } = await getOrder(c.base, tokens[customerId], orderId, sourceIp, expected);
+          rows.push({
+            scenario: "normal_orders", expected, status,
+            source_ip: sourceIp, customer_id: customerId,
+            path: "/api/v1/orders/" + orderId,
           });
         }
       }
     };
 
-    RUNNERS.matched_account_learn = async function (c, rows) {
-      currentScenario = "matched_account_learn";
-      const n = c.matchedCustomers;
-      const rounds = c.matchedRounds;
-      const path = "/api/v1/accounts/inquire";
+    RUNNERS.attack_orders = async function (c, rows) {
+      currentScenario = "attack_orders";
+      const n = Math.max(2, c.users);
       const tokens = {};
-      for (let round = 1; round <= rounds; round++) {
+      for (let round = 1; round <= c.rounds; round++) {
         for (let customerId = 1; customerId <= n; customerId++) {
-          if (!tokens[customerId]) {
-            tokens[customerId] = await issueToken(c.base, customerId, null);
-          }
-          const token = tokens[customerId];
+          if (learnAbort) return;
+          if (!tokens[customerId]) tokens[customerId] = await issueToken(c.base, customerId, null);
+          const orderId = mismatchedOrderId(customerId, n);
+          const expected = expectedLabel(customerId, orderId);
           const sourceIp = userSourceIp(customerId);
-          const accountNo = accountNoFor(customerId);
-          const expected = expectedLabel(customerId, null, customerId);
-          const { status } = await loggedFetch("POST", c.base + path, {
-            headers: {
-              Authorization: "Bearer " + token,
-              "X-Forwarded-For": sourceIp,
-              "X-Real-IP": sourceIp,
-            },
-            body: { accountNo },
-            expected,
-            meta: { kind: "account_matched", accountNo, round },
-          });
-          push(rows, {
-            scenario: "matched_account_learn",
-            expected,
-            status,
-            source_ip: sourceIp,
-            customer_id: customerId,
-            operator_code: null,
-            path: path + " accountNo=" + accountNo,
-            notes: "round " + round + "/" + rounds + " · XFF=" + sourceIp,
+          const { status } = await getOrder(c.base, tokens[customerId], orderId, sourceIp, expected);
+          rows.push({
+            scenario: "attack_orders", expected, status,
+            source_ip: sourceIp, customer_id: customerId,
+            path: "/api/v1/orders/" + orderId,
           });
         }
       }
     };
 
-    RUNNERS.operator_cyclic = async function (c, rows) {
-      currentScenario = "operator_cyclic";
-      const idCount = c.cyclicIds;
-      const code = idCount <= 264 ? "OP_CYCLE_A" : "OP_LARGE";
-      const assigned = Array.from({ length: idCount }, (_, i) => i + 1);
-      const shared = operatorSharedIpList(c.operatorSharedIps || 1);
-      const tokenOp = c.operatorCodeEnabled ? code : null;
-      for (let i = 0; i < c.cyclicSample; i++) {
-        const customerId = assigned[i % assigned.length];
+    RUNNERS.operator_orders = async function (c, rows) {
+      currentScenario = "operator_orders";
+      const pool = Array.from({ length: c.operatorCustomers }, (_, i) => i + 1);
+      const shared = operatorSharedIpList(c.operatorSharedIps);
+      for (let i = 0; i < c.operatorRequests; i++) {
+        if (learnAbort) return;
+        const customerId = pool[i % pool.length];
         const sourceIp = shared[i % shared.length];
-        const token = await issueToken(c.base, customerId, tokenOp);
-        const path = "/api/v1/orders/" + orderIdFor(customerId);
-        const expected = expectedLabel(customerId, tokenOp, customerId, assigned);
-        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, {
-          scenario: "operator_cyclic",
-          expected,
-          status,
-          source_ip: sourceIp,
-          customer_id: customerId,
-          operator_code: tokenOp,
-          path,
-          notes: "운영사 공유 IP×" + shared.length,
+        const code = c.operatorCodeEnabled && customerId <= 500 ? "OP_LARGE" : null;
+        const token = await issueToken(c.base, customerId, code);
+        const orderId = orderIdFor(customerId);
+        const expected = expectedLabel(customerId, orderId);
+        const { status } = await getOrder(c.base, token, orderId, sourceIp, expected);
+        rows.push({
+          scenario: "operator_orders", expected, status,
+          source_ip: sourceIp, customer_id: customerId,
+          path: "/api/v1/orders/" + orderId,
         });
       }
     };
-
-    RUNNERS.operator_fixed = async function (c, rows) {
-      currentScenario = "operator_fixed";
-      const customerId = 405;
-      const tokenOp = c.operatorCodeEnabled ? "OP_FIXED_A" : null;
-      const ips = Array.from({ length: 8 }, (_, i) => "198.51.100." + (i + 1));
-      for (let i = 0; i < c.fixedSample; i++) {
-        const sourceIp = ips[i % ips.length];
-        const token = await issueToken(c.base, customerId, tokenOp);
-        const path = "/api/v1/orders/" + orderIdFor(customerId);
-        const expected = expectedLabel(customerId, tokenOp, customerId, [customerId]);
-        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, { scenario: "operator_fixed", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: tokenOp, path });
-      }
-    };
-
-    RUNNERS.access_token_reissue = async function (c, rows) {
-      currentScenario = "access_token_reissue";
-      const customerId = 406;
-      const sourceIp = userSourceIp(customerId);
-      const tokenOp = c.operatorCodeEnabled ? "OP_FIXED_B" : null;
-      const day0 = Math.floor(Date.UTC(2026, 9, 28, 9, 0, 0) / 1000);
-      const path = "/api/v1/orders/" + orderIdFor(customerId);
-      const seen = new Set();
-      for (let d = 0; d < 3; d++) {
-        const issuedAt = day0 + d * 86400;
-        const token = await issueToken(c.base, customerId, tokenOp, issuedAt);
-        seen.add(token);
-        const expected = expectedLabel(customerId, tokenOp, customerId, [customerId]);
-        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, { scenario: "access_token_reissue", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: tokenOp, path });
-      }
-      if (seen.size !== 3) throw new Error("날짜마다 access token 문자열이 달라야 합니다");
-    };
-
-    RUNNERS.cross_customer_bola = async function (c, rows) {
-      currentScenario = "cross_customer_bola";
-      const attacker = 410;
-      const sourceIp = userSourceIp(attacker);
-      const token = await issueToken(c.base, attacker, null);
-      const targets = [
-        ["/api/v1/orders/" + orderIdFor(1), 1],
-        ["/api/v1/payments/" + paymentIdFor(1), 1],
-        ["/api/v1/customers/1", 1],
-        ["/api/v1/pets/1/medical-records", 1],
-      ];
-      for (const [path, owner] of targets) {
-        const expected = expectedLabel(attacker, null, owner);
-        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, { scenario: "cross_customer_bola", expected, status, source_ip: sourceIp, customer_id: attacker, operator_code: null, path });
-      }
-    };
-
-    RUNNERS.id_enumeration = async function (c, rows) {
-      currentScenario = "id_enumeration";
-      const attacker = 410;
-      const sourceIp = userSourceIp(attacker);
-      const token = await issueToken(c.base, attacker, null);
-      const start = orderIdFor(1);
-      for (let offset = 0; offset < c.enumCount; offset++) {
-        const orderId = start + offset;
-        const owner = customerIdForOrder(orderId);
-        const path = "/api/v1/orders/" + orderId;
-        const expected = expectedLabel(attacker, null, owner);
-        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, { scenario: "id_enumeration", expected, status, source_ip: sourceIp, customer_id: attacker, operator_code: null, path });
-      }
-    };
-
-    RUNNERS.account_body_bola = async function (c, rows) {
-      currentScenario = "account_body_bola";
-      const attacker = 410;
-      const sourceIp = userSourceIp(attacker);
-      const token = await issueToken(c.base, attacker, null);
-      const path = "/api/v1/accounts/inquire";
-      const targets = [
-        [accountNoFor(attacker), attacker],
-        [accountNoFor(1), 1],
-        [accountNoFor(2), 2],
-      ];
-      for (const [accountNo, owner] of targets) {
-        const expected = expectedLabel(attacker, null, owner);
-        const { status } = await loggedFetch("POST", c.base + path, {
-          headers: {
-            Authorization: "Bearer " + token,
-            "Content-Type": "application/json",
-            "X-Forwarded-For": sourceIp,
-            "X-Real-IP": sourceIp,
-          },
-          body: { accountNo },
-          expected,
-          meta: { kind: "account_body", accountNo },
-        });
-        push(rows, { scenario: "account_body_bola", expected, status, source_ip: sourceIp, customer_id: attacker, operator_code: null, path: path + " accountNo=" + accountNo });
-      }
-    };
-
-    RUNNERS.abnormal_probe = async function (c, rows) {
-      currentScenario = "abnormal_probe";
-      const customerId = 410;
-      const sourceIp = userSourceIp(customerId);
-      const token = await issueToken(c.base, customerId, null);
-      for (const path of ["/api/v1/orders/" + customerId, "/api/v1/payments/" + customerId]) {
-        const expected = expectedLabel(customerId, null, customerId);
-        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, { scenario: "abnormal_probe", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: null, path });
-      }
-      for (let cid = 1; cid <= 5; cid++) {
-        const orderId = orderIdFor(cid);
-        const owner = customerIdForOrder(orderId);
-        const path = "/api/v1/orders/" + orderId;
-        const expected = expectedLabel(customerId, null, owner);
-        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, { scenario: "abnormal_probe", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: null, path });
-      }
-    };
-
-    const ORDER = GROUP_ORDER.flatMap((g) =>
-      Object.keys(SCENARIO_META).filter((id) => SCENARIO_META[id].group === g)
-    );
-    const BATCH_ORDER = ["batch_benign", "batch_attack", "batch_all"];
-    const BATCH_BENIGN = ORDER.filter((id) => SCENARIO_META[id].expected === "benign");
-    const BATCH_ATTACK = ORDER.filter((id) => SCENARIO_META[id].expected !== "benign");
 
     async function renderFlow(text) {
       const el = document.getElementById("flowChart");
@@ -1363,40 +780,12 @@ Authorization: Bearer (410)
       }
     }
 
-    function batchPlan(mode) {
-      if (mode === "benign") {
-        return { ids: BATCH_BENIGN.slice(), label: "정상 · XC 학습 (" + BATCH_BENIGN.length + "개)" };
-      }
-      if (mode === "attack") {
-        return { ids: BATCH_ATTACK.slice(), label: "비정상 · BOLA/이상 (" + BATCH_ATTACK.length + "개)" };
-      }
-      return { ids: ORDER.slice(), label: "전체 시나리오 (" + ORDER.length + "개)" };
-    }
-
-    function batchExample(mode) {
-      const plan = batchPlan(mode);
-      return plan.ids.map((id) => "- " + scenarioTitle(id)).join("\n");
-    }
-
-    function syncBatchOpts(meta) {
-      const needed = new Set(meta.options || []);
-      document.querySelectorAll("[data-batch-opt]").forEach((el) => {
-        el.hidden = !needed.has(el.getAttribute("data-batch-opt"));
-      });
-    }
-
-    function syncScenarioOpts(id) {
-      const meta = SCENARIO_META[id];
-      const needed = new Set(meta.options || []);
+    function syncOpts(id) {
+      const needed = new Set(SCENARIO_META[id].options || []);
       document.querySelectorAll(".opt-slot").forEach((el) => {
-        const key = el.getAttribute("data-opt");
-        el.hidden = !needed.has(key);
+        el.hidden = !needed.has(el.getAttribute("data-opt"));
       });
-      const hasAny = needed.size > 0;
-      document.getElementById("noScenarioOpts").hidden = hasAny;
-      document.getElementById("scenarioOptsLabel").hidden = !hasAny;
-      document.getElementById("scenarioOptsLabel").textContent =
-        "이 시나리오 설정 · " + meta.title;
+      document.getElementById("noScenarioOpts").hidden = needed.size > 0;
     }
 
     function selectScenario(id) {
@@ -1404,55 +793,17 @@ Authorization: Bearer (410)
       document.querySelectorAll(".scenario-list button").forEach((b) => {
         b.classList.toggle("active", b.getAttribute("data-id") === id);
       });
-      const batch = isBatchId(id);
-      document.getElementById("batchPanel").hidden = !batch;
-      document.getElementById("scenarioPanel").hidden = batch;
-
-      if (batch) {
-        const meta = BATCH_META[id];
-        const plan = batchPlan(meta.mode);
-        document.getElementById("batchPanelTitle").textContent = meta.title;
-        document.getElementById("batchPanelLead").textContent = meta.desc;
-        document.getElementById("batchRounds").value = String(meta.defaultRounds);
-        document.getElementById("batchRoundsHelp").textContent =
-          meta.mode === "benign"
-            ? "XC 학습용. 보통 300회. HTTP 로그는 아래 옵션에서 ON/OFF."
-            : "비정상·전체는 1~수십이면 충분한 경우가 많습니다. HTTP 로그는 아래 옵션에서 ON/OFF.";
-        syncBatchOpts(meta);
-        document.getElementById("detailTitle").innerHTML =
-          meta.title + " " + expectedTag(meta.expected);
-        document.getElementById("detailDesc").textContent = meta.desc;
-        const why = document.getElementById("whyBox");
-        why.hidden = !meta.why;
-        why.textContent = meta.why ? "왜 쓰나: " + meta.why : "";
-        document.getElementById("flowTitle").textContent = "요청 흐름도 · " + meta.title;
-        document.getElementById("exampleTitle").textContent = "포함 시나리오 · " + plan.label;
-        document.getElementById("exampleBox").textContent = batchExample(meta.mode);
-        document.getElementById("status").textContent =
-          plan.label + " · 반복 " + meta.defaultRounds + "회 · 실행 대기";
-        renderFlow(meta.flow);
-        return;
-      }
-
-      const meta = SCENARIO_META[id];
-      syncScenarioOpts(id);
-      document.getElementById("detailTitle").innerHTML =
-        meta.title + " " + expectedTag(meta.expected);
-      document.getElementById("detailDesc").textContent = meta.desc;
+      const m = SCENARIO_META[id];
+      syncOpts(id);
+      document.getElementById("scenarioPanelTitle").textContent = m.title;
+      document.getElementById("scenarioLead").textContent = m.desc;
+      document.getElementById("detailTitle").innerHTML = m.title + " " + expectedTag(m.expected);
+      document.getElementById("detailDesc").textContent = m.desc;
       const why = document.getElementById("whyBox");
-      why.hidden = !meta.why;
-      why.textContent = meta.why ? "왜 쓰나: " + meta.why : "";
-      document.getElementById("flowTitle").textContent = "요청 흐름도 · " + meta.title;
-      document.getElementById("exampleTitle").textContent = "요청 예시 · " + meta.title;
-      document.getElementById("exampleBox").textContent = meta.example;
-      document.getElementById("statusSingle").textContent =
-        "선택: " + meta.title + " · 설정 확인 후 실행";
-      renderFlow(meta.flow);
-    }
-
-    function scenarioTitle(id) {
-      if (BATCH_META[id]) return BATCH_META[id].title;
-      return (SCENARIO_META[id] && SCENARIO_META[id].title) || id;
+      why.textContent = m.why ? "왜: " + m.why : "";
+      document.getElementById("exampleBox").textContent = m.example;
+      document.getElementById("status").textContent = "선택: " + m.title;
+      renderFlow(m.flow);
     }
 
     function render(rows) {
@@ -1460,12 +811,11 @@ Authorization: Bearer (410)
       document.getElementById("rows").innerHTML = rows.map((r, i) => `
         <tr>
           <td>${i + 1}</td>
-          <td>${scenarioTitle(r.scenario)}</td>
+          <td>${SCENARIO_META[r.scenario] ? SCENARIO_META[r.scenario].title : r.scenario}</td>
           <td>${expectedTag(r.expected)}</td>
           <td>${r.status}</td>
-          <td>${r.source_ip || ""}</td>
+          <td><code>${r.source_ip || ""}</code></td>
           <td>${r.customer_id ?? ""}</td>
-          <td>${r.operator_code ?? "—"}</td>
           <td><code>${r.path}</code></td>
         </tr>`).join("");
       const benign = rows.filter((r) => r.expected === "benign").length;
@@ -1475,9 +825,6 @@ Authorization: Bearer (410)
         <span class="pill">합계 ${rows.length}</span>
         <span class="pill">정상 ${benign}</span>
         <span class="pill">BOLA ${bola}</span>
-        <span class="pill">HTTP ${httpLog.entries.length}</span>
-        <span class="pill">운영자 표시 ${c.operatorCodeEnabled ? "ON" : "OFF"}</span>
-        <span class="pill">학습계정 ${c.matchedCustomers}</span>
         <span class="pill">대상 ${c.base}</span>`;
     }
 
@@ -1489,126 +836,36 @@ Authorization: Bearer (410)
     function escapeHtml(s) {
       return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     }
-
-    function renderTokens() {
-      document.getElementById("tokenCount").textContent = tokenLog.entries.length + "개";
-      const empty = document.getElementById("tokenEmpty");
-      const table = document.getElementById("tokenTable");
-      if (!tokenLog.entries.length) {
-        empty.hidden = false;
-        table.hidden = true;
-        document.getElementById("tokenRows").innerHTML = "";
-        return;
-      }
-      empty.hidden = true;
-      table.hidden = false;
-      const latest = tokenLog.entries.slice(-40);
-      document.getElementById("tokenRows").innerHTML = latest.map((t) => {
-        const p = t.payload || {};
-        return `<tr>
-          <td>${t.seq}</td>
-          <td>${t.scenario ? scenarioTitle(t.scenario) : "—"}<div class="opt-help">${t.source}</div></td>
-          <td><code>${p.customer_id ?? "—"}</code></td>
-          <td><code>${p.operator_code ?? "—"}</code></td>
-          <td class="opt-help">${formatEpoch(p.iat)}<br/>→ ${formatEpoch(p.exp)}</td>
-          <td>
-            <details>
-              <summary>claim JSON</summary>
-              <div class="ex-panel">
-                <p class="ex-heading">JWT payload (디코드)</p>
-                <p class="ex-heading-sub">서명 검증 없이 payload 만 표시. 소유권 비교에 쓰는 필드 확인용.</p>
-                <pre class="ex-body">${escapeHtml(preview({ header: t.header, payload: t.payload, tokenPreview: t.tokenPreview }))}</pre>
-              </div>
-            </details>
-          </td>
-        </tr>`;
-      }).join("");
-    }
-
-    function jwtBlock(label, jwt) {
-      if (!jwt || !jwt.payload) return "";
-      const p = jwt.payload;
-      return `<div class="ex-panel" style="margin-top:8px">
-        <p class="ex-heading">${label}</p>
-        <p class="ex-heading-sub">customer_id=${p.customer_id ?? "—"} · operator_code=${p.operator_code ?? "—"} · iat=${formatEpoch(p.iat)} · exp=${formatEpoch(p.exp)}</p>
-        <pre class="ex-body">${escapeHtml(preview(p))}</pre>
-      </div>`;
-    }
-
-    function statusMatchesFilter(status, filter) {
-      if (!filter) return true;
-      const s = Number(status);
-      if (!Number.isFinite(s)) return false;
-      if (filter === "2xx") return s >= 200 && s < 300;
-      if (filter === "3xx") return s >= 300 && s < 400;
-      if (filter === "4xx") return s >= 400 && s < 500;
-      if (filter === "5xx") return s >= 500 && s < 600;
-      return String(s) === String(filter);
-    }
-
-    function pathFromUrl(url) {
-      try {
-        const u = new URL(url, "http://dummy.local");
-        return u.pathname + u.search;
-      } catch (_) {
-        return String(url || "");
-      }
-    }
-
     function filteredHttpEntries() {
-      const statusFilter = (document.getElementById("httpFilterStatus") || {}).value || "";
-      const pathFilter = ((document.getElementById("httpFilterPath") || {}).value || "").trim().toLowerCase();
+      const st = document.getElementById("httpFilterStatus").value;
+      const pathQ = (document.getElementById("httpFilterPath").value || "").trim().toLowerCase();
       return httpLog.entries.filter((e) => {
-        if (!statusMatchesFilter(e.response && e.response.status, statusFilter)) return false;
-        if (pathFilter) {
-          const path = pathFromUrl(e.request && e.request.url).toLowerCase();
-          const full = String((e.request && e.request.url) || "").toLowerCase();
-          if (!path.includes(pathFilter) && !full.includes(pathFilter)) return false;
-        }
+        const code = e.response.status;
+        if (st === "2xx" && (code < 200 || code > 299)) return false;
+        if (st === "4xx" && (code < 400 || code > 499)) return false;
+        if (st && st.length === 3 && Number(st) !== code) return false;
+        if (pathQ && !(e.request.url || "").toLowerCase().includes(pathQ)) return false;
         return true;
       });
     }
-
     function renderHttp() {
-      const filtered = filteredHttpEntries();
-      const total = httpLog.entries.length;
-      const shown = filtered.slice(-80);
-      document.getElementById("httpCount").textContent =
-        filtered.length === total
-          ? total + "건"
-          : filtered.length + "건 표시 / 전체 " + total + "건";
-      if (!shown.length) {
-        document.getElementById("httpRows").innerHTML =
-          `<tr><td colspan="5" style="color:var(--muted)">조건에 맞는 기록이 없습니다.</td></tr>`;
-        return;
-      }
-      document.getElementById("httpRows").innerHTML = shown.map((e) => `
+      const rows = filteredHttpEntries();
+      document.getElementById("httpCount").textContent = httpLog.entries.length + "건";
+      document.getElementById("httpRows").innerHTML = rows.slice(-80).map((e) => `
         <tr>
           <td>${e.seq}</td>
-          <td>${e.scenario ? scenarioTitle(e.scenario) : "—"}</td>
+          <td>${e.scenario || "—"}</td>
           <td>${e.expected ? expectedTag(e.expected) : "—"}</td>
           <td>
-            <div><code>${e.request.method} ${e.request.url}</code></div>
-            <details>
-              <summary>요청 내용 펼치기</summary>
-              <div class="ex-panel">
-                <p class="ex-heading">요청 헤더 · 본문</p>
-                <p class="ex-heading-sub">이 PC가 대상 서버로 보낸 HTTP 요청의 headers / body 입니다.</p>
-                <pre class="ex-body">${escapeHtml(preview({ headers: e.request.headers, body: e.request.body }))}</pre>
-              </div>
-              ${jwtBlock("요청 JWT claim (디코드)", e.request.jwt)}
+            <div><strong>${e.request.method}</strong> <code>${escapeHtml(e.request.url)}</code></div>
+            <details><summary>요청 헤더·본문</summary>
+              <pre class="ex-body">${escapeHtml(preview({ headers: e.request.headers, body: e.request.body }))}</pre>
             </details>
           </td>
           <td>
             <div><strong>HTTP ${e.response.status}</strong></div>
-            <details>
-              <summary>응답 내용 펼치기</summary>
-              <div class="ex-panel">
-                <p class="ex-heading">응답 헤더 · 본문</p>
-                <p class="ex-heading-sub">대상 서버가 돌려준 HTTP 응답의 headers / body 입니다.</p>
-                <pre class="ex-body">${escapeHtml(preview({ headers: e.response.headers, body: e.response.body }))}</pre>
-              </div>
-              ${jwtBlock("발급된 accessToken claim (디코드)", e.response.jwt)}
+            <details><summary>응답</summary>
+              <pre class="ex-body">${escapeHtml(preview({ headers: e.response.headers, body: e.response.body }))}</pre>
             </details>
           </td>
         </tr>`).join("");
@@ -1624,148 +881,48 @@ Authorization: Bearer (410)
       URL.revokeObjectURL(a.href);
     }
 
-    function setBusy(v, { batch } = {}) {
+    function setBusy(v) {
       busy = v;
-      document.getElementById("batchRunBtn").disabled = v;
       document.getElementById("runBtn").disabled = v;
       document.getElementById("pingBtn").disabled = v;
-      document.getElementById("pingBtnSingle").disabled = v;
-      document.getElementById("batchRounds").disabled = v;
-      document.getElementById("batchHttpLog").disabled = v;
-      document.getElementById("stopLearnBtn").disabled = !(v && batch);
+      document.getElementById("stopBtn").disabled = !v;
     }
 
     async function runSelected() {
-      if (busy || isBatchId(selectedId)) return;
+      if (busy) return;
       setBusy(true);
+      learnAbort = false;
       const c = cfg();
-      document.getElementById("base").value = c.base;
+      learnQuiet = !c.httpLogOn;
       const rows = [];
-      const statusEl = document.getElementById("statusSingle");
+      const statusEl = document.getElementById("status");
       try {
-        statusEl.textContent = "대상 서버 확인 중…";
-        currentScenario = null;
-        const health = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
+        statusEl.textContent = "대상 서버 확인…";
+        const health = await loggedFetch("GET", c.base + "/health");
         if (!health.ok) throw new Error("연결 실패 HTTP " + health.status);
-        statusEl.textContent = "실행 중: " + scenarioTitle(selectedId);
+        statusEl.textContent = "실행 중: " + SCENARIO_META[selectedId].title;
         await RUNNERS[selectedId](c, rows);
         render(rows);
-        statusEl.textContent = "완료 · 결과 " + rows.length + "건 / HTTP " + httpLog.entries.length + "건 → " + c.base;
+        if (c.httpLogOn) renderHttp();
+        statusEl.textContent = (learnAbort ? "중지 · " : "완료 · ") + rows.length + "건 → " + c.base;
       } catch (err) {
         statusEl.textContent = "실패: " + (err && err.message ? err.message : err);
         render(rows);
       } finally {
         currentScenario = null;
-        setBusy(false);
-      }
-    }
-
-    async function runBatchTraffic() {
-      if (busy) return;
-      if (!isBatchId(selectedId)) {
-        document.getElementById("status").textContent = "왼쪽 일괄트래픽(학습) 메뉴를 먼저 고르세요";
-        return;
-      }
-      const rounds = clamp(Number(document.getElementById("batchRounds").value), 1, 2000);
-      document.getElementById("batchRounds").value = String(rounds);
-      const mode = BATCH_META[selectedId].mode;
-      const plan = batchPlan(mode);
-      if (!plan.ids.length) {
-        document.getElementById("status").textContent = "실행할 시나리오 세트가 비어 있습니다";
-        return;
-      }
-      const httpLogOn = document.getElementById("batchHttpLog").checked;
-      setBusy(true, { batch: true });
-      learnQuiet = !httpLogOn;
-      learnDeferRender = httpLogOn;
-      learnAbort = false;
-      learnHttpCount = 0;
-      learnOkCount = 0;
-      learnFailCount = 0;
-      const c = cfg();
-      document.getElementById("base").value = c.base;
-      const statusEl = document.getElementById("status");
-      const t0 = Date.now();
-      let finishedRounds = 0;
-      try {
-        statusEl.textContent =
-          "준비 · 대상 서버 확인… (" + plan.label + " ×" + rounds +
-          ", HTTP로그 " + (httpLogOn ? "ON" : "OFF") + ")";
-        currentScenario = null;
-        const health = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
-        if (!health.ok) throw new Error("연결 실패 HTTP " + health.status + " — 대상 서버 주소를 확인하세요");
-        for (let r = 1; r <= rounds; r++) {
-          if (learnAbort) break;
-          const rows = [];
-          for (const id of plan.ids) {
-            if (learnAbort) break;
-            const httpShown = httpLogOn ? httpLog.entries.length : learnHttpCount;
-            statusEl.textContent =
-              r + "/" + rounds + " · " + plan.label + " · " + scenarioTitle(id) +
-              " · HTTP " + httpShown +
-              (httpLogOn ? "" : " (ok " + learnOkCount + " / fail " + learnFailCount + ")");
-            await RUNNERS[id](c, rows);
-            await sleep(0);
-          }
-          if (!learnAbort) finishedRounds = r;
-          if (httpLogOn) renderHttp();
-          if (r % 10 === 0 || r === rounds) await sleep(0);
-        }
-        if (httpLogOn) {
-          renderHttp();
-          renderTokens();
-        }
-        const sec = ((Date.now() - t0) / 1000).toFixed(1);
-        const verb = learnAbort ? "중지" : "완료";
-        const httpShown = httpLogOn ? httpLog.entries.length : learnHttpCount;
-        statusEl.textContent =
-          verb + " · " + plan.label + " ×" + finishedRounds +
-          " · HTTP " + httpShown +
-          (httpLogOn ? " (로그 ON)" : " (ok " + learnOkCount + " / fail " + learnFailCount + ", 로그 OFF)") +
-          " · " + sec + "s → " + c.base;
-      } catch (err) {
-        if (httpLogOn) renderHttp();
-        statusEl.textContent =
-          "실패 (" + finishedRounds + "/" + rounds + "): " +
-          (err && err.message ? err.message : err) +
-          " · HTTP " + (httpLogOn ? httpLog.entries.length : learnHttpCount);
-      } finally {
         learnQuiet = false;
-        learnDeferRender = false;
-        learnAbort = false;
-        currentScenario = null;
         setBusy(false);
-      }
-    }
-
-    async function pingTarget(statusEl) {
-      const c = cfg();
-      try {
-        const r = await loggedFetch("GET", c.base + "/health", { meta: { kind: "health" } });
-        statusEl.textContent = r.ok
-          ? "대상 서버 OK: " + c.base
-          : "대상 서버 응답 " + r.status;
-      } catch (err) {
-        statusEl.textContent = "대상 서버 연결 실패: " + err.message;
       }
     }
 
     function mount() {
       const list = document.getElementById("scenarioList");
       let html = "";
-      html += `<div class="group-label">${BATCH_META.batch_benign.groupLabel}</div>`;
-      for (const id of BATCH_ORDER) {
-        const m = BATCH_META[id];
-        html += `<button type="button" data-id="${id}">
-          <span class="name">${expectedTag(m.expected)}<span class="name-text">${m.title}</span></span>
-          <span class="meta">${m.short}</span>
-        </button>`;
-      }
-      let lastGroup = null;
+      let last = null;
       for (const id of ORDER) {
         const m = SCENARIO_META[id];
-        if (m.group !== lastGroup) {
-          lastGroup = m.group;
+        if (m.group !== last) {
+          last = m.group;
           html += `<div class="group-label">${m.groupLabel}</div>`;
         }
         html += `<button type="button" data-id="${id}">
@@ -1779,35 +936,24 @@ Authorization: Bearer (410)
         if (!btn || busy) return;
         selectScenario(btn.getAttribute("data-id"));
       });
-      document.getElementById("batchRunBtn").addEventListener("click", () => runBatchTraffic());
       document.getElementById("runBtn").addEventListener("click", () => runSelected());
-      document.getElementById("stopLearnBtn").addEventListener("click", () => {
-        learnAbort = true;
-        document.getElementById("status").textContent = "중지 요청… 현재 시나리오 끝나면 멈춥니다";
+      document.getElementById("stopBtn").addEventListener("click", () => { learnAbort = true; });
+      document.getElementById("pingBtn").addEventListener("click", async () => {
+        const c = cfg();
+        try {
+          const r = await loggedFetch("GET", c.base + "/health");
+          document.getElementById("status").textContent = r.ok ? "OK " + c.base : "HTTP " + r.status;
+        } catch (err) {
+          document.getElementById("status").textContent = "연결 실패: " + err.message;
+        }
       });
-      document.getElementById("pingBtn").addEventListener("click", () =>
-        pingTarget(document.getElementById("status"))
-      );
-      document.getElementById("pingBtnSingle").addEventListener("click", () =>
-        pingTarget(document.getElementById("statusSingle"))
-      );
-      document.getElementById("dlSummary").addEventListener("click", () => {
-        downloadJsonl("bola-lab-" + Date.now() + ".jsonl", lastSummaryRows);
-      });
-      document.getElementById("dlHttp").addEventListener("click", () => {
-        const rows = filteredHttpEntries();
-        downloadJsonl("bola-lab-" + Date.now() + ".http.jsonl", rows.length ? rows : httpLog.entries);
-      });
+      document.getElementById("dlSummary").addEventListener("click", () =>
+        downloadJsonl("bola-lab-" + Date.now() + ".jsonl", lastSummaryRows));
+      document.getElementById("dlHttp").addEventListener("click", () =>
+        downloadJsonl("bola-lab-" + Date.now() + ".http.jsonl", filteredHttpEntries()));
       document.getElementById("clearLog").addEventListener("click", () => {
-        httpLog.entries = [];
-        httpLog.seq = 0;
-        tokenLog.entries = [];
-        tokenLog.seq = 0;
-        lastSummaryRows = [];
-        render([]);
-        renderHttp();
-        renderTokens();
-        document.getElementById("status").textContent = "기록 비움";
+        httpLog.entries = []; httpLog.seq = 0; lastSummaryRows = [];
+        render([]); renderHttp();
       });
       document.getElementById("httpFilterStatus").addEventListener("change", () => renderHttp());
       document.getElementById("httpFilterPath").addEventListener("input", () => renderHttp());
@@ -1816,10 +962,8 @@ Authorization: Bearer (410)
         document.getElementById("httpFilterPath").value = "";
         renderHttp();
       });
-      renderTokens();
       selectScenario(selectedId);
     }
-
     mount();
   </script>
 </body>

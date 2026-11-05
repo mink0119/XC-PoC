@@ -693,7 +693,7 @@ def _openapi():
             },
         }
     }
-    # Path-level private objects used by P1a / P1c / P3
+    # Path-level private objects (/orders/{id}) for normal/attack/operator traffic
     for private_path in (
         "/api/v1/orders/{id}",
         "/api/v1/payments/{id}",

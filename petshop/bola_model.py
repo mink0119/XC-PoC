@@ -367,18 +367,22 @@ def is_assigned(operator_code: str | None, customer_id: int) -> bool:
 
 
 def authorized_for_owner(claims: dict[str, Any] | None, owner_customer_id: int) -> bool:
-    """Local ground truth for the scenario runner — not used by the API."""
+    """Local ground truth for the scenario runner — not used by the API.
+
+    Only JWT customer_id vs object owner. operator_code does not grant access
+    to someone else's order (order path is 1:1 with customer_id).
+    """
     if not claims:
         return False
-    if claims.get("customer_id") == owner_customer_id:
-        return True
-    return is_assigned(claims.get("operator_code"), owner_customer_id)
+    return claims.get("customer_id") == owner_customer_id
 
 
 def expected_label(customer_id: int | None, operator_code: str | None, owner_customer_id: int) -> str:
+    # operator_code is optional JWT claim for XC identity experiments; labels ignore it.
+    _ = operator_code
     claims = None
     if customer_id is not None:
-        claims = {"customer_id": customer_id, "operator_code": operator_code}
+        claims = {"customer_id": customer_id}
     return "benign" if authorized_for_owner(claims, owner_customer_id) else "bola"
 
 
