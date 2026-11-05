@@ -101,8 +101,8 @@ python3 serve_lab.py
    - **정상 · XC 학습** × N (기본 300) — baseline
    - **비정상 · BOLA/이상** — 학습 후
    - **전체 시나리오**
-4. **사용자별 XFF IP 개수**(기본 40, 권장 ≥30) · 운영사 시나리오만 **공유 IP 개수**
-5. 필요 시 **HTTP 요청/응답 로그 남기기** ON
+4. 시나리오마다 **필요한 옵션만** 표시 (매칭 학습=계정 수·반복, 운영사=공유 IP 등)
+5. 필요 시 **HTTP 로그 ON** → Request 헤더에서 `X-Forwarded-For` 확인
 6. P1/P2/P3는 단건 실행·설명용
 
 > Incident 탐지 ≠ 자동 차단. XC에서 Protection / Rate Limit / Block 적용 후, 로그 ON으로 응답이 막히는지 확인하세요.
@@ -115,8 +115,8 @@ python3 serve_lab.py
 cd scenarios
 python3 -m pip install -r requirements.txt
 
-python3 run_bola.py --base http://192.168.47.81 --batch benign --repeat 300 --xff-ip-count 40
-python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 300 --matched-rounds 2 --xff-ip-count 40
+python3 run_bola.py --base http://192.168.47.81 --batch benign --repeat 300
+python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 40 --matched-rounds 2
 python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264 --operator-shared-ips 1
 python3 run_bola.py --base http://192.168.47.81 --batch attack --repeat 1 --http-log
 ```
@@ -124,11 +124,10 @@ python3 run_bola.py --base http://192.168.47.81 --batch attack --repeat 1 --http
 | 플래그 | 의미 |
 |--------|------|
 | `--batch benign\|attack\|all` | 일괄 세트 |
-| `--repeat N` | 반복 (N>1이면 기본 HTTP JSONL OFF) |
-| `--xff-ip-count N` | 일반: 사용자별 XFF 풀 크기 (기본 40) |
-| `--operator-shared-ips N` | P2a: 운영사 공유 IP 개수 (기본 1) |
-| `--http-log` | 상세 `*.http.jsonl` 강제 |
-| `--quiet-http` | 상세 로그 생략 |
+| `--repeat N` | 세트 반복 |
+| `--matched-customers N` | 매칭 학습 계정 수 (=서로 다른 XFF 수, 권장 ≥30) |
+| `--operator-shared-ips N` | 운영사 공유 IP 개수 (기본 1) |
+| `--http-log` | 상세 `*.http.jsonl` |
 
 ---
 

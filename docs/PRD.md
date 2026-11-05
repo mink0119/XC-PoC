@@ -89,8 +89,8 @@ BOLA/행위 분석은 **학습 트래픽·시간이 필요**하다.
 시나리오를 돌린 직후 XC에 이벤트가 없다고 해서 “미지원”으로 단정하지 않는다. UI에 이 문구를 유지한다.
 
 User Identification이 **IP**이면 학습에 보통 **≥30 distinct client**가 필요하다.  
-일반 시나리오는 **사용자(customer_id)마다** 안정적 `X-Forwarded-For`를 쓰고, 풀 크기는 `--xff-ip-count`(기본 40)로 둔다.  
-운영사 다계정·공유 IP(`operator_cyclic`)만 `--operator-shared-ips`로 예외 처리한다.
+일반(매칭 학습 등)은 **customer마다 X-Forwarded-For 1:1**. 운영사(`operator_cyclic`)만 다계정·공유 IP.  
+랩 UI는 시나리오마다 **필요한 옵션만** 표시한다.
 
 ## 6. 데이터·명명 규칙
 

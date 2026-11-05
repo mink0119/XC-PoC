@@ -5,126 +5,66 @@ Pet Shop은 소유권을 검사하지 않습니다. 방어는 XC에서만 합니
 
 ## 역할 분리
 
-```mermaid
-flowchart LR
-  local["Local PC\nserve_lab.py / run_bola.py"]
-  api["Pet Shop API"]
-  xc["F5 XC"]
-  local -->|"시나리오 HTTP"| api
-  api -.->|"OOB / Inline"| xc
-```
-
 | 위치 | 역할 |
 |------|------|
 | 로컬 `scenarios/` | 공격·정상 패턴 **트래픽 생성** |
 | Pet Shop | 취약 **대상 API**만 |
 | F5 XC | Discovery / BOLA / 이상행위 **탐지** (이 랩 밖) |
 
-## P1 / P2 / P3 (반드시 분리)
+## 시나리오와 옵션 (필요한 것만)
 
-| 그룹 | 의미 | 랩 키 |
-|------|------|-------|
-| **P1** 객체 BOLA | 권한 없는 객체 접근 | `cross_customer_bola`, `account_body_bola`, `id_enumeration` |
-| **P2** 오탐·식별 | 정상 다계정/IP/토큰 | `operator_cyclic`, `operator_fixed`, `access_token_reissue` + `operator_code` |
-| **P3** 이상행위 | 정상 후 급변 | `abnormal_probe` |
-| 기본 | 베이스라인 | `public_catalog`, `self_order`, `matched_order_learn`, `matched_account_learn` |
+| 시나리오 | 의미 | UI에 나오는 옵션 |
+|----------|------|------------------|
+| `public_catalog` | 공개 상품 | (없음) |
+| `self_order` | 내 주문 1건 | (없음) |
+| `matched_order_learn` | 계정 N → `/orders/N` + **계정마다 다른 XFF** | 계정 수, 반복 횟수 |
+| `matched_account_learn` | 계정 N → 본인 `accountNo` + 계정마다 다른 XFF | 계정 수, 반복 횟수 |
+| `cross_customer_bola` | Path로 남의 객체 | (없음) |
+| `account_body_bola` | Body로 남의 계좌 | (없음) |
+| `id_enumeration` | 주문번호 연속 | 열거 개수 |
+| `operator_cyclic` | **운영사**: 다계정 + **공유 IP** | 계정 수, 요청 수, 공유 IP 개수, operator_code |
+| `operator_fixed` | 같은 계정 + IP만 변경 | IP 변경 횟수, operator_code |
+| `access_token_reissue` | 토큰 일자 재발급 | operator_code |
+| `abnormal_probe` | 정상 후 타인 급탐색 | (없음) |
 
-IP 변경 ≠ BOLA. BOLA = 인증 주체가 권한 없는 객체에 접근하는 것.
+일괄 **정상 · XC 학습**: 세트 반복 + 학습 계정 수(+매칭 반복) + HTTP 로그 ON/OFF 만.
 
-### baseline matched_order_learn
+## IP 규칙 (기억할 것 2가지)
 
-XC가 `orders/{id}`를 `{DYN}`이 아니라 **identity에 묶인 Private Resource**로 학습하는지 보려면, JWT `customer_id`와 path `id`가 **같은 숫자**여야 합니다.
+1. **일반** (매칭 학습 등): `customer_id` 마다 `X-Forwarded-For`가 **다름** (1:1). 소켓 IP는 그대로.
+2. **운영사** (`operator_cyclic`): 여러 계정을 **1개(또는 소수) IP**로 쏨 → 오탐 재현용.
+
+요약 표의 `source_ip` 열 · HTTP 로그 Request 헤더의 `X-Forwarded-For`로 확인하세요.  
+XC가 실제 클라이언트 IP만 보면 전부 같아 보입니다 — XFF를 User Identification에 쓰도록 XC 쪽 설정이 필요합니다.
+
+## matched_order_learn
 
 ```text
-JWT customer_id=1  → GET /api/v1/orders/1
+JWT customer_id=1  → GET /orders/1  · XFF 198.51.100.1
+JWT customer_id=2  → GET /orders/2  · XFF 198.51.100.2
 …
-JWT customer_id=N  → GET /api/v1/orders/N
-(위 1..N 사이클) × rounds
-→ 전부 benign · 교차·열거 없음
-```
-
-옵션: `--matched-customers N`, `--matched-rounds K`, `--xff-ip-count M`.  
-예: `N=300`, `K=100`, `M=40` → 30,000 GET · XFF 풀 40.
-
-#### 소스 IP 규칙
-
-| 구분 | 동작 | 설정 |
-|------|------|------|
-| **일반** (학습·본인조회·BOLA 등) | **사용자(customer_id)마다** 안정적 XFF. 같은 사용자는 라운드가 바뀌어도 같은 IP | `--xff-ip-count` (기본 40, 권장 ≥30) |
-| **운영사 P2a** `operator_cyclic` | 다계정을 **소수 공유 IP**로 쏨 (오탐 재현) | `--operator-shared-ips` (기본 1) |
-| **운영사 P2b** `operator_fixed` | 계정 고정 · IP만 변경 | 시나리오 자체 로직 |
-
-소켓 IP는 바꾸지 않고 `X-Forwarded-For` / `X-Real-IP` 만 설정합니다.  
-`xff-ip-count` &lt; 계정 수이면 `(customer_id-1) % count` 로 풀을 재사용하되, 사용자 단위 매핑은 유지됩니다.
-
-주문 응답에 `customer_id` / `customerId` 를 넣어 JWT claim 과 같은 키로 attribute 학습이 되게 한다.  
-Pet Shop 주문 소유는 **1:1** (`order_id == customer_id`)로 고정한다.
-
-### baseline matched_account_learn
-
-기존 `POST /api/v1/accounts/inquire` 사용 (신규 path 없음).
-
-```text
-JWT customer_id=N → Body { "accountNo": "10000000+N" }
-→ 응답 customer_id / accountNo · benign
 × matched-rounds
 ```
 
-P1b `account_body_bola`(타인 accountNo)와 대조용 정상 Body Private Resource 학습.
+예: 계정 40 · 반복 10 → 400 GET. IP 식별 학습이면 계정 수 ≥30.
 
-### P1b Body Private Resource
-
-```text
-POST /api/v1/accounts/inquire
-Authorization: Bearer <customer 410>
-{ "accountNo": "10000001" }   # owner = customer 1
-→ HTTP 200 (취약) · 로컬 라벨 bola
-```
-
-XC가 Path뿐 아니라 **Body `accountNo`** 를 Private Resource로 학습·탐지하는지 확인하는 시나리오입니다.
-
-### P3 abnormal_probe
-
-자기 주문 2건(정상) → 타인 주문 5건(BOLA). P2 순환과 대조합니다.
-
-## 사용 (설치 → 실행)
-
-### 로컬 GUI
+## 사용
 
 ```bash
 cd scenarios
-python3 serve_lab.py
-# http://127.0.0.1:8765
-```
-
-Target = Pet Shop URL. 시나리오 클릭 시 **해당 옵션만** 표시.
-
-### CLI (선택)
-
-```bash
-cd scenarios
-python3 -m pip install -r requirements.txt
-python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 300 --matched-rounds 100 --xff-ip-count 40
-python3 run_bola.py --base http://192.168.47.81 --scenario matched_account_learn --matched-customers 40 --matched-rounds 2 --xff-ip-count 40
-python3 run_bola.py --base http://192.168.47.81 --scenario account_body_bola
-python3 run_bola.py --base http://192.168.47.81 --scenario abnormal_probe
+python3 serve_lab.py          # http://127.0.0.1:8765
+python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 40 --matched-rounds 2
 python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264 --operator-shared-ips 1
 ```
-
-산출물: `out/*.jsonl`, `*.http.jsonl`, `*.summary.json`
 
 ## operator_code
 
 | 모드 | JWT | 의미 |
 |------|-----|------|
 | OFF (기본) | 운영자 claim 없음 | 현재형 · 오탐 검토 |
-| ON | `operator_code` 포함 | 미래형 · 운용사 식별 claim |
+| ON | `operator_code` 포함 | 미래형 |
 
 ## 학습 기간
 
 BOLA/행위 분석은 학습 트래픽·시간이 필요할 수 있습니다.  
 실행 직후 XC 이벤트가 없다고 미지원으로 단정하지 마세요.
-
-## OOB에서 이 랩이 증명하지 않는 것
-
-실제 차단, Rate Limit Inline, 20K TPS, 미러링·마스킹 운영 — PRD Out of scope. Inline/별도 환경 필요.
