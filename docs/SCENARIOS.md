@@ -43,8 +43,19 @@ JWT customer_id=N  → GET /api/v1/orders/N
 → 전부 benign · 교차·열거 없음
 ```
 
-옵션: `--matched-customers N` (계정 수), `--matched-rounds K` (1..N 전체 반복).  
-예: `N=300`, `K=100` → 30,000 GET.
+옵션: `--matched-customers N`, `--matched-rounds K`, `--xff-ip-count M`.  
+예: `N=300`, `K=100`, `M=40` → 30,000 GET · XFF 풀 40.
+
+#### 소스 IP 규칙
+
+| 구분 | 동작 | 설정 |
+|------|------|------|
+| **일반** (학습·본인조회·BOLA 등) | **사용자(customer_id)마다** 안정적 XFF. 같은 사용자는 라운드가 바뀌어도 같은 IP | `--xff-ip-count` (기본 40, 권장 ≥30) |
+| **운영사 P2a** `operator_cyclic` | 다계정을 **소수 공유 IP**로 쏨 (오탐 재현) | `--operator-shared-ips` (기본 1) |
+| **운영사 P2b** `operator_fixed` | 계정 고정 · IP만 변경 | 시나리오 자체 로직 |
+
+소켓 IP는 바꾸지 않고 `X-Forwarded-For` / `X-Real-IP` 만 설정합니다.  
+`xff-ip-count` &lt; 계정 수이면 `(customer_id-1) % count` 로 풀을 재사용하되, 사용자 단위 매핑은 유지됩니다.
 
 주문 응답에 `customer_id` / `customerId` 를 넣어 JWT claim 과 같은 키로 attribute 학습이 되게 한다.  
 Pet Shop 주문 소유는 **1:1** (`order_id == customer_id`)로 고정한다.
@@ -93,11 +104,11 @@ Target = Pet Shop URL. 시나리오 클릭 시 **해당 옵션만** 표시.
 ```bash
 cd scenarios
 python3 -m pip install -r requirements.txt
-python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 300 --matched-rounds 100
-python3 run_bola.py --base http://192.168.47.81 --scenario matched_account_learn --matched-customers 300 --matched-rounds 100
+python3 run_bola.py --base http://192.168.47.81 --scenario matched_order_learn --matched-customers 300 --matched-rounds 100 --xff-ip-count 40
+python3 run_bola.py --base http://192.168.47.81 --scenario matched_account_learn --matched-customers 40 --matched-rounds 2 --xff-ip-count 40
 python3 run_bola.py --base http://192.168.47.81 --scenario account_body_bola
 python3 run_bola.py --base http://192.168.47.81 --scenario abnormal_probe
-python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264
+python3 run_bola.py --base http://192.168.47.81 --scenario operator_cyclic --cyclic-ids 264 --operator-shared-ips 1
 ```
 
 산출물: `out/*.jsonl`, `*.http.jsonl`, `*.summary.json`

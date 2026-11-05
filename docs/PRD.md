@@ -88,6 +88,10 @@ OOB vs Inline 역할은 README/시나리오 안내 문구로만 명시한다.
 BOLA/행위 분석은 **학습 트래픽·시간이 필요**하다.  
 시나리오를 돌린 직후 XC에 이벤트가 없다고 해서 “미지원”으로 단정하지 않는다. UI에 이 문구를 유지한다.
 
+User Identification이 **IP**이면 학습에 보통 **≥30 distinct client**가 필요하다.  
+일반 시나리오는 **사용자(customer_id)마다** 안정적 `X-Forwarded-For`를 쓰고, 풀 크기는 `--xff-ip-count`(기본 40)로 둔다.  
+운영사 다계정·공유 IP(`operator_cyclic`)만 `--operator-shared-ips`로 예외 처리한다.
+
 ## 6. 데이터·명명 규칙
 
 - 제품/UI/로그에 특정 증권사·고객사 명칭을 넣지 않는다.

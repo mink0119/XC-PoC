@@ -449,6 +449,16 @@
               <input id="matchedRounds" type="number" min="1" max="500" value="1" />
               <span class="opt-help">1..N 전체를 몇 번 반복 (예: 300×100)</span>
             </label>
+            <label class="field" data-batch-opt="xffIpCount">
+              <strong>사용자별 XFF IP 개수</strong>
+              <input id="xffIpCount" type="number" min="1" max="508" value="40" />
+              <span class="opt-help">일반 시나리오: customer마다 IP를 고정 매핑하고, 이 개수만큼 풀을 돌려 씁니다 (권장 ≥30). 소켓 IP는 안 바뀌고 X-Forwarded-For만 바뀝니다. 운영사 공유 IP 시나리오에는 적용 안 함.</span>
+            </label>
+            <label class="field" data-batch-opt="operatorSharedIps">
+              <strong>운영사 공유 IP 개수</strong>
+              <input id="operatorSharedIps" type="number" min="1" max="16" value="1" />
+              <span class="opt-help">P2a 순환형만: 다계정을 1~N개 IP로 쏨 (운영사 NAT 오탐 재현).</span>
+            </label>
           </div>
           <div class="toggle-block" data-batch-opt="operator">
             <label class="toggle">
@@ -511,6 +521,16 @@
               <strong>1..N 사이클을 몇 번 반복할까</strong>
               <input id="matchedRoundsSingle" type="number" min="1" max="500" value="1" />
               <span class="opt-help">예: 계정 300 + 반복 100 → 요청 30,000건</span>
+            </label>
+            <label class="field opt-slot" data-opt="xffIpCount" hidden>
+              <strong>사용자별 XFF IP 개수</strong>
+              <input id="xffIpCountSingle" type="number" min="1" max="508" value="40" />
+              <span class="opt-help">customer_id → 안정적 XFF. 풀 크기만큼 돌아감 (권장 ≥30).</span>
+            </label>
+            <label class="field opt-slot" data-opt="operatorSharedIps" hidden>
+              <strong>운영사 공유 IP 개수</strong>
+              <input id="operatorSharedIpsSingle" type="number" min="1" max="16" value="1" />
+              <span class="opt-help">다계정 → 소수 IP (운영사 패턴).</span>
             </label>
           </div>
           <div class="toggle-block opt-slot" data-opt="operatorCode" hidden>
@@ -710,9 +730,9 @@
         group: "baseline", groupLabel: "기본 · 베이스라인",
         title: "정상 · customer↔주문 매칭 학습",
         short: "cid=N → /orders/N · 사이클 반복",
-        expected: "benign", options: ["matchedCustomers", "matchedRounds"],
-        desc: "JWT customer_id 와 Path /orders/{id} 를 같은 숫자로 맞춥니다. 계정 수(1..N)와 그 전체 사이클 반복 횟수를 지정합니다. 응답에 customer_id 필드 포함.",
-        why: "XC가 orders/{id}를 Private Resource로 학습하도록, 동일 매칭 요청을 대량·반복으로 쌓습니다. 예: N=300 × rounds=100.",
+        expected: "benign", options: ["matchedCustomers", "matchedRounds", "xffIpCount"],
+        desc: "JWT customer_id 와 Path /orders/{id} 를 같은 숫자로 맞춥니다. 계정 수(1..N)·사이클 반복·사용자별 XFF IP 개수를 지정합니다. 각 사용자는 자기 XFF를 유지합니다.",
+        why: "XC가 orders/{id}를 Private Resource로 학습하도록 매칭 요청을 쌓습니다. IP 식별이면 XFF IP 개수 ≥30. 예: 계정 300 × 반복 100, XFF 풀 40.",
         flow: `flowchart TD
           R1[round 1: 1..N] --> R2[round 2: 1..N]
           R2 --> RK[round K: 1..N]
@@ -726,8 +746,8 @@
         group: "baseline", groupLabel: "기본 · 베이스라인",
         title: "정상 · customer↔계좌 매칭 학습",
         short: "cid=N → Body accountNo 본인 계좌",
-        expected: "benign", options: ["matchedCustomers", "matchedRounds"],
-        desc: "기존 POST /api/v1/accounts/inquire 를 사용합니다. JWT customer_id=N 이면 Body accountNo=10000000+N (본인 계좌)만 조회합니다.",
+        expected: "benign", options: ["matchedCustomers", "matchedRounds", "xffIpCount"],
+        desc: "기존 POST /api/v1/accounts/inquire 를 사용합니다. JWT customer_id=N 이면 Body accountNo=10000000+N (본인 계좌)만 조회합니다. XFF는 사용자별로 묶습니다.",
         why: "Path가 아닌 Body Private Resource(accountNo)를 identity와 묶어 XC가 학습하는지 확인합니다. P1b account_body_bola(타인 계좌)와 대조.",
         flow: `flowchart TD
           T1[JWT cid=N] -->|POST /accounts/inquire| API[Pet Shop]
@@ -785,8 +805,8 @@ Authorization: Bearer (410)
         group: "P2", groupLabel: "P2 · 오탐·식별 (정상인데 헷갈리기 쉬움)",
         title: "P2a · 여러 계정 돌아가며 조회",
         short: "다계정 순환 · 각 계정은 자기 주문만",
-        expected: "benign", options: ["cyclicIds", "cyclicSample", "operatorCode"],
-        desc: "여러 계정을 번갈아 쓰되 각 계정의 자기 주문만 봅니다. IP 변경≠BOLA.",
+        expected: "benign", options: ["cyclicIds", "cyclicSample", "operatorCode", "operatorSharedIps"],
+        desc: "운영사가 소수 공유 IP로 여러 계정을 돌아가며 조회합니다(각 계정은 자기 주문만). 일반 사용자별 IP와 다릅니다. IP 변경≠BOLA.",
         why: "운영 대행의 정상 패턴이 XC에 공격으로 오인되는지(오탐) 검토합니다. 운영자 표시 ON/OFF 비교.",
         flow: `flowchart TD
           A[계정1→주문1] --> B[계정2→주문2] --> C[계정N]
@@ -843,9 +863,9 @@ Authorization: Bearer (410)
         title: "정상 · XC 학습",
         short: "정상 세트 × N (BOLA 제외)",
         expected: "benign",
-        options: ["cyclic", "fixed", "operator", "matched"],
+        options: ["cyclic", "fixed", "operator", "matched", "xffIpCount", "operatorSharedIps"],
         defaultRounds: 300,
-        desc: "정상(benign) 시나리오 전체를 반복해 XC Discovery·BOLA baseline을 쌓습니다. P1 BOLA·열거·이상행위는 포함하지 않습니다.",
+        desc: "정상(benign) 시나리오 전체를 반복해 XC Discovery·BOLA baseline을 쌓습니다. 일반 트래픽은 사용자별 XFF, 운영사 시나리오만 공유 IP.",
         why: "학습 트래픽은 정상 패턴만 써야 identity↔객체 기준선이 선명해집니다.",
         flow: `flowchart TD
           B[정상 세트] -->|×N| T[Pet Shop / XC]
@@ -875,7 +895,7 @@ Authorization: Bearer (410)
         title: "전체 시나리오",
         short: "정상+비정상 전부 × N",
         expected: "bola",
-        options: ["cyclic", "fixed", "enum", "operator", "matched"],
+        options: ["cyclic", "fixed", "enum", "operator", "matched", "xffIpCount", "operatorSharedIps"],
         defaultRounds: 1,
         desc: "정상과 비정상 시나리오를 모두 한 바퀴로 돌립니다. 데모·회귀용입니다. XC 순수 학습용은 아닙니다.",
         why: "한 번에 전체 패턴을 재현할 때 사용합니다.",
@@ -903,9 +923,25 @@ Authorization: Bearer (410)
         enumCount: num("enumCount", "enumCountSingle", 1, 100),
         matchedCustomers: num("matchedCustomers", "matchedCustomersSingle", 1, 600),
         matchedRounds: num("matchedRounds", "matchedRoundsSingle", 1, 500),
+        xffIpCount: num("xffIpCount", "xffIpCountSingle", 1, 508),
+        operatorSharedIps: num("operatorSharedIps", "operatorSharedIpsSingle", 1, 16),
         operatorCodeEnabled: checked("operatorCode", "operatorCodeSingle"),
         enforceOwnership: document.getElementById("enforceOwnership").checked,
       };
+    }
+
+    /** 일반: customer_id → 안정적 XFF (풀 크기 ipCount). 운영사 공유 IP와 분리. */
+    function userSourceIp(customerId, ipCount) {
+      const n = Math.max(1, Math.min(508, Number(ipCount) || 40));
+      const slot = ((Math.max(1, customerId) - 1) % n);
+      const a = slot % 508;
+      if (a < 254) return "198.51.100." + (a + 1);
+      return "203.0.113." + ((a - 254) + 1);
+    }
+
+    function operatorSharedIpList(count) {
+      const n = Math.max(1, Math.min(16, Number(count) || 1));
+      return Array.from({ length: n }, (_, i) => "203.0.113." + (200 + i));
     }
 
     function authHeaders(extra) {
@@ -1121,18 +1157,19 @@ Authorization: Bearer (410)
     RUNNERS.self_order = async function (c, rows) {
       currentScenario = "self_order";
       const customerId = 410;
+      const sourceIp = userSourceIp(customerId, c.xffIpCount);
       const token = await issueToken(c.base, customerId, null);
       const path = "/api/v1/orders/" + orderIdFor(customerId);
       const expected = expectedLabel(customerId, null, customerId);
-      const { status } = await getPrivate(c.base, token, path, "192.0.2.60", expected);
-      push(rows, { scenario: "self_order", expected, status, source_ip: "192.0.2.60", customer_id: customerId, operator_code: null, path });
+      const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+      push(rows, { scenario: "self_order", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: null, path });
     };
 
     RUNNERS.matched_order_learn = async function (c, rows) {
       currentScenario = "matched_order_learn";
       const n = c.matchedCustomers;
       const rounds = c.matchedRounds;
-      const sourceIp = "192.0.2.70";
+      const xffIpCount = c.xffIpCount || 40;
       const tokens = {};
       for (let round = 1; round <= rounds; round++) {
         for (let customerId = 1; customerId <= n; customerId++) {
@@ -1140,6 +1177,7 @@ Authorization: Bearer (410)
             tokens[customerId] = await issueToken(c.base, customerId, null);
           }
           const token = tokens[customerId];
+          const sourceIp = userSourceIp(customerId, xffIpCount);
           // XC learn shape: JWT customer_id === path /orders/{id}
           const orderId = customerId;
           const path = "/api/v1/orders/" + orderId;
@@ -1153,7 +1191,7 @@ Authorization: Bearer (410)
             customer_id: customerId,
             operator_code: null,
             path,
-            notes: "round " + round + "/" + rounds,
+            notes: "round " + round + "/" + rounds + " · xff_ip_count=" + xffIpCount,
           });
         }
       }
@@ -1163,7 +1201,7 @@ Authorization: Bearer (410)
       currentScenario = "matched_account_learn";
       const n = c.matchedCustomers;
       const rounds = c.matchedRounds;
-      const sourceIp = "192.0.2.71";
+      const xffIpCount = c.xffIpCount || 40;
       const path = "/api/v1/accounts/inquire";
       const tokens = {};
       for (let round = 1; round <= rounds; round++) {
@@ -1172,6 +1210,7 @@ Authorization: Bearer (410)
             tokens[customerId] = await issueToken(c.base, customerId, null);
           }
           const token = tokens[customerId];
+          const sourceIp = userSourceIp(customerId, xffIpCount);
           const accountNo = accountNoFor(customerId);
           const expected = expectedLabel(customerId, null, customerId);
           const { status } = await loggedFetch("POST", c.base + path, {
@@ -1182,7 +1221,7 @@ Authorization: Bearer (410)
             },
             body: { accountNo },
             expected,
-            meta: { kind: "account_matched", accountNo, round },
+            meta: { kind: "account_matched", accountNo, round, xff_ip_count: xffIpCount },
           });
           push(rows, {
             scenario: "matched_account_learn",
@@ -1192,7 +1231,7 @@ Authorization: Bearer (410)
             customer_id: customerId,
             operator_code: null,
             path: path + " accountNo=" + accountNo,
-            notes: "round " + round + "/" + rounds,
+            notes: "round " + round + "/" + rounds + " · xff_ip_count=" + xffIpCount,
           });
         }
       }
@@ -1203,16 +1242,25 @@ Authorization: Bearer (410)
       const idCount = c.cyclicIds;
       const code = idCount <= 264 ? "OP_CYCLE_A" : "OP_LARGE";
       const assigned = Array.from({ length: idCount }, (_, i) => i + 1);
-      const ips = idCount > 264 ? ["203.0.113.50"] : ["203.0.113.10", "203.0.113.11"];
+      const shared = operatorSharedIpList(c.operatorSharedIps || 1);
       const tokenOp = c.operatorCodeEnabled ? code : null;
       for (let i = 0; i < c.cyclicSample; i++) {
         const customerId = assigned[i % assigned.length];
-        const sourceIp = ips[i % ips.length];
+        const sourceIp = shared[i % shared.length];
         const token = await issueToken(c.base, customerId, tokenOp);
         const path = "/api/v1/orders/" + orderIdFor(customerId);
         const expected = expectedLabel(customerId, tokenOp, customerId, assigned);
         const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
-        push(rows, { scenario: "operator_cyclic", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: tokenOp, path });
+        push(rows, {
+          scenario: "operator_cyclic",
+          expected,
+          status,
+          source_ip: sourceIp,
+          customer_id: customerId,
+          operator_code: tokenOp,
+          path,
+          notes: "운영사 공유 IP×" + shared.length,
+        });
       }
     };
 
@@ -1234,6 +1282,7 @@ Authorization: Bearer (410)
     RUNNERS.access_token_reissue = async function (c, rows) {
       currentScenario = "access_token_reissue";
       const customerId = 406;
+      const sourceIp = userSourceIp(customerId, c.xffIpCount);
       const tokenOp = c.operatorCodeEnabled ? "OP_FIXED_B" : null;
       const day0 = Math.floor(Date.UTC(2026, 9, 28, 9, 0, 0) / 1000);
       const path = "/api/v1/orders/" + orderIdFor(customerId);
@@ -1243,8 +1292,8 @@ Authorization: Bearer (410)
         const token = await issueToken(c.base, customerId, tokenOp, issuedAt);
         seen.add(token);
         const expected = expectedLabel(customerId, tokenOp, customerId, [customerId]);
-        const { status } = await getPrivate(c.base, token, path, "198.51.100.10", expected);
-        push(rows, { scenario: "access_token_reissue", expected, status, source_ip: "198.51.100.10", customer_id: customerId, operator_code: tokenOp, path });
+        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+        push(rows, { scenario: "access_token_reissue", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: tokenOp, path });
       }
       if (seen.size !== 3) throw new Error("날짜마다 access token 문자열이 달라야 합니다");
     };
@@ -1252,6 +1301,7 @@ Authorization: Bearer (410)
     RUNNERS.cross_customer_bola = async function (c, rows) {
       currentScenario = "cross_customer_bola";
       const attacker = 410;
+      const sourceIp = userSourceIp(attacker, c.xffIpCount);
       const token = await issueToken(c.base, attacker, null);
       const targets = [
         ["/api/v1/orders/" + orderIdFor(1), 1],
@@ -1261,14 +1311,15 @@ Authorization: Bearer (410)
       ];
       for (const [path, owner] of targets) {
         const expected = expectedLabel(attacker, null, owner);
-        const { status } = await getPrivate(c.base, token, path, "192.0.2.99", expected);
-        push(rows, { scenario: "cross_customer_bola", expected, status, source_ip: "192.0.2.99", customer_id: attacker, operator_code: null, path });
+        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+        push(rows, { scenario: "cross_customer_bola", expected, status, source_ip: sourceIp, customer_id: attacker, operator_code: null, path });
       }
     };
 
     RUNNERS.id_enumeration = async function (c, rows) {
       currentScenario = "id_enumeration";
       const attacker = 410;
+      const sourceIp = userSourceIp(attacker, c.xffIpCount);
       const token = await issueToken(c.base, attacker, null);
       const start = orderIdFor(1);
       for (let offset = 0; offset < c.enumCount; offset++) {
@@ -1276,14 +1327,15 @@ Authorization: Bearer (410)
         const owner = customerIdForOrder(orderId);
         const path = "/api/v1/orders/" + orderId;
         const expected = expectedLabel(attacker, null, owner);
-        const { status } = await getPrivate(c.base, token, path, "192.0.2.99", expected);
-        push(rows, { scenario: "id_enumeration", expected, status, source_ip: "192.0.2.99", customer_id: attacker, operator_code: null, path });
+        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+        push(rows, { scenario: "id_enumeration", expected, status, source_ip: sourceIp, customer_id: attacker, operator_code: null, path });
       }
     };
 
     RUNNERS.account_body_bola = async function (c, rows) {
       currentScenario = "account_body_bola";
       const attacker = 410;
+      const sourceIp = userSourceIp(attacker, c.xffIpCount);
       const token = await issueToken(c.base, attacker, null);
       const path = "/api/v1/accounts/inquire";
       const targets = [
@@ -1297,33 +1349,34 @@ Authorization: Bearer (410)
           headers: {
             Authorization: "Bearer " + token,
             "Content-Type": "application/json",
-            "X-Forwarded-For": "192.0.2.99",
-            "X-Real-IP": "192.0.2.99",
+            "X-Forwarded-For": sourceIp,
+            "X-Real-IP": sourceIp,
           },
           body: { accountNo },
           expected,
           meta: { kind: "account_body", accountNo },
         });
-        push(rows, { scenario: "account_body_bola", expected, status, source_ip: "192.0.2.99", customer_id: attacker, operator_code: null, path: path + " accountNo=" + accountNo });
+        push(rows, { scenario: "account_body_bola", expected, status, source_ip: sourceIp, customer_id: attacker, operator_code: null, path: path + " accountNo=" + accountNo });
       }
     };
 
     RUNNERS.abnormal_probe = async function (c, rows) {
       currentScenario = "abnormal_probe";
       const customerId = 410;
+      const sourceIp = userSourceIp(customerId, c.xffIpCount);
       const token = await issueToken(c.base, customerId, null);
       for (const path of ["/api/v1/orders/" + customerId, "/api/v1/payments/" + customerId]) {
         const expected = expectedLabel(customerId, null, customerId);
-        const { status } = await getPrivate(c.base, token, path, "192.0.2.60", expected);
-        push(rows, { scenario: "abnormal_probe", expected, status, source_ip: "192.0.2.60", customer_id: customerId, operator_code: null, path });
+        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+        push(rows, { scenario: "abnormal_probe", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: null, path });
       }
       for (let cid = 1; cid <= 5; cid++) {
         const orderId = orderIdFor(cid);
         const owner = customerIdForOrder(orderId);
         const path = "/api/v1/orders/" + orderId;
         const expected = expectedLabel(customerId, null, owner);
-        const { status } = await getPrivate(c.base, token, path, "192.0.2.60", expected);
-        push(rows, { scenario: "abnormal_probe", expected, status, source_ip: "192.0.2.60", customer_id: customerId, operator_code: null, path });
+        const { status } = await getPrivate(c.base, token, path, sourceIp, expected);
+        push(rows, { scenario: "abnormal_probe", expected, status, source_ip: sourceIp, customer_id: customerId, operator_code: null, path });
       }
     };
 
@@ -1462,6 +1515,8 @@ Authorization: Bearer (410)
         <span class="pill">BOLA ${bola}</span>
         <span class="pill">HTTP ${httpLog.entries.length}</span>
         <span class="pill">운영자 표시 ${c.operatorCodeEnabled ? "ON" : "OFF"}</span>
+        <span class="pill">XFF풀 ${c.xffIpCount}</span>
+        <span class="pill">운영사IP ${c.operatorSharedIps}</span>
         <span class="pill">대상 ${c.base}</span>`;
     }
 

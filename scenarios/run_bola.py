@@ -34,6 +34,42 @@ import bola_model  # noqa: E402
 DEFAULT_CYCLIC_IDS = 264
 MAX_CYCLIC_IDS = 500
 
+# 일반 트래픽: 사용자(customer_id)마다 다른 XFF (소켓 IP는 못 바꾸므로 헤더만).
+# 운영사 공유 IP 시나리오(operator_cyclic / operator_fixed)는 별도 경로 — 여기 풀을 쓰지 않음.
+DEFAULT_XFF_IP_COUNT = 40  # XC User Identification=IP 학습 권장 ≥30
+MAX_XFF_IP_COUNT = 508
+DEFAULT_OPERATOR_SHARED_IPS = 1
+MAX_OPERATOR_SHARED_IPS = 16
+
+
+def _xff_pool_ip(slot: int) -> str:
+    """Map 0-based slot → TEST-NET address (198.51.100/24 then 203.0.113/24)."""
+    a = int(slot) % 508
+    if a < 254:
+        return f"198.51.100.{a + 1}"
+    return f"203.0.113.{(a - 254) + 1}"
+
+
+def user_source_ip(customer_id: int, *, ip_count: int = DEFAULT_XFF_IP_COUNT) -> str:
+    """Stable per-user XFF: same customer_id → same IP across rounds.
+
+    ``ip_count`` is the pool size (몇 개 IP를 돌아가며 쓸지).
+    customers ≤ ip_count → 사용자마다 유일 IP.
+    customers > ip_count → (customer_id-1) % ip_count 로 재사용하되 사용자 단위 고정.
+    """
+    if ip_count < 1 or ip_count > MAX_XFF_IP_COUNT:
+        raise SystemExit(f"--xff-ip-count 는 1..{MAX_XFF_IP_COUNT} 범위여야 합니다")
+    cid = max(1, int(customer_id))
+    return _xff_pool_ip((cid - 1) % int(ip_count))
+
+
+def operator_shared_ips(count: int = DEFAULT_OPERATOR_SHARED_IPS) -> list[str]:
+    """운영사가 쓰는 소수 공유 IP (다계정 → 1~N개 IP). 일반 사용자 풀과 분리."""
+    if count < 1 or count > MAX_OPERATOR_SHARED_IPS:
+        raise SystemExit(f"--operator-shared-ips 는 1..{MAX_OPERATOR_SHARED_IPS} 범위여야 합니다")
+    # 198.51.100 과 겹치지 않게 203.0.113.200+ 대역 사용
+    return [f"203.0.113.{200 + i}" for i in range(int(count))]
+
 
 class Ctx:
     def __init__(
@@ -216,15 +252,21 @@ def run_catalog(ctx: Ctx, rows, count: int, operator_code_enabled: bool):
         )
 
 
-def run_self_orders(ctx: Ctx, rows, operator_code_enabled: bool):
+def run_self_orders(
+    ctx: Ctx,
+    rows,
+    operator_code_enabled: bool,
+    xff_ip_count: int = DEFAULT_XFF_IP_COUNT,
+):
     ctx.scenario = "self_order"
     customer_id = 410
+    source_ip = user_source_ip(customer_id, ip_count=xff_ip_count)
     token = issue(ctx, customer_id, None)
     order_id = bola_model.order_id_for(customer_id, 0)
     owner = bola_model.customer_id_for_order(order_id)
     path = f"/api/v1/orders/{order_id}"
     expected = bola_model.expected_label(customer_id, None, owner)
-    status, _body = get_private(ctx, token, path, "192.0.2.60", expected=expected)
+    status, _body = get_private(ctx, token, path, source_ip, expected=expected)
     record(
         rows,
         scenario="self_order",
@@ -232,12 +274,12 @@ def run_self_orders(ctx: Ctx, rows, operator_code_enabled: bool):
         method="GET",
         path=path,
         status=status,
-        source_ip="192.0.2.60",
+        source_ip=source_ip,
         operator_code=None,
         customer_id=customer_id,
         issued_at=None,
         owner_customer_id=owner,
-        notes="본인 주문 조회",
+        notes="본인 주문 조회 (per-user XFF)",
         operator_code_enabled=operator_code_enabled,
     )
 
@@ -248,24 +290,28 @@ def run_matched_order_learn(
     customer_count: int,
     rounds: int,
     operator_code_enabled: bool,
+    xff_ip_count: int = DEFAULT_XFF_IP_COUNT,
 ):
     """XC learning: JWT customer_id N → GET /api/v1/orders/N, repeated.
 
     One round = customers 1..N each hit their matching order once.
     ``rounds`` repeats that full cycle (e.g. N=300, rounds=100 → 30_000 GETs).
+
+    XFF is bound per user (customer_id) from a pool of ``xff_ip_count`` IPs.
+    Not the operator shared-IP pattern.
     """
     ctx.scenario = "matched_order_learn"
     if customer_count < 1 or customer_count > bola_model.CUSTOMER_COUNT:
         raise SystemExit(f"--matched-customers 는 1..{bola_model.CUSTOMER_COUNT} 범위여야 합니다")
     if rounds < 1 or rounds > MAX_MATCHED_ROUNDS:
         raise SystemExit(f"--matched-rounds 는 1..{MAX_MATCHED_ROUNDS} 범위여야 합니다")
-    source_ip = "192.0.2.70"
     tokens: dict[int, str] = {}
     for round_i in range(1, rounds + 1):
         for customer_id in range(1, customer_count + 1):
             if customer_id not in tokens:
                 tokens[customer_id] = issue(ctx, customer_id, None)
             token = tokens[customer_id]
+            source_ip = user_source_ip(customer_id, ip_count=xff_ip_count)
             order_id = bola_model.order_id_for(customer_id, 0)
             owner = bola_model.customer_id_for_order(order_id)
             path = f"/api/v1/orders/{order_id}"
@@ -288,7 +334,10 @@ def run_matched_order_learn(
                 customer_id=customer_id,
                 issued_at=None,
                 owner_customer_id=owner,
-                notes=f"JWT customer_id == /orders/{{id}} · round {round_i}/{rounds}",
+                notes=(
+                    f"JWT customer_id == /orders/{{id}} · round {round_i}/{rounds} · "
+                    f"xff_ip_count={xff_ip_count} (per-user)"
+                ),
                 operator_code_enabled=operator_code_enabled,
             )
 
@@ -299,17 +348,18 @@ def run_matched_account_learn(
     customer_count: int,
     rounds: int,
     operator_code_enabled: bool,
+    xff_ip_count: int = DEFAULT_XFF_IP_COUNT,
 ):
     """XC learning: JWT customer_id N → POST /accounts/inquire with own accountNo.
 
     accountNo = 10000000+N so Body private resource matches the token subject.
+    XFF bound per user from ``xff_ip_count`` pool.
     """
     ctx.scenario = "matched_account_learn"
     if customer_count < 1 or customer_count > bola_model.CUSTOMER_COUNT:
         raise SystemExit(f"--matched-customers 는 1..{bola_model.CUSTOMER_COUNT} 범위여야 합니다")
     if rounds < 1 or rounds > MAX_MATCHED_ROUNDS:
         raise SystemExit(f"--matched-rounds 는 1..{MAX_MATCHED_ROUNDS} 범위여야 합니다")
-    source_ip = "192.0.2.71"
     path = "/api/v1/accounts/inquire"
     tokens: dict[int, str] = {}
     for round_i in range(1, rounds + 1):
@@ -317,6 +367,7 @@ def run_matched_account_learn(
             if customer_id not in tokens:
                 tokens[customer_id] = issue(ctx, customer_id, None)
             token = tokens[customer_id]
+            source_ip = user_source_ip(customer_id, ip_count=xff_ip_count)
             account_no = bola_model.account_no_for(customer_id)
             owner = bola_model.customer_id_for_account_no(account_no)
             expected = bola_model.expected_label(customer_id, None, owner or -1)
@@ -331,7 +382,11 @@ def run_matched_account_learn(
                 source_ip,
                 {"accountNo": account_no},
                 expected=expected,
-                meta={"accountNo": account_no, "round": round_i},
+                meta={
+                    "accountNo": account_no,
+                    "round": round_i,
+                    "xff_ip_count": xff_ip_count,
+                },
             )
             record(
                 rows,
@@ -345,22 +400,33 @@ def run_matched_account_learn(
                 customer_id=customer_id,
                 issued_at=None,
                 owner_customer_id=owner,
-                notes=f"JWT customer_id == accountNo owner · round {round_i}/{rounds}",
+                notes=(
+                    f"JWT customer_id == accountNo owner · round {round_i}/{rounds} · "
+                    f"xff_ip_count={xff_ip_count} (per-user)"
+                ),
                 operator_code_enabled=operator_code_enabled,
             )
 
 
-def run_cyclic_operator(ctx: Ctx, rows, sample: int, id_count: int, operator_code_enabled: bool):
+def run_cyclic_operator(
+    ctx: Ctx,
+    rows,
+    sample: int,
+    id_count: int,
+    operator_code_enabled: bool,
+    operator_shared_ip_count: int = DEFAULT_OPERATOR_SHARED_IPS,
+):
+    """P2 오탐: 운영사가 소수 IP로 다계정 순환. 일반 per-user XFF 풀과 무관."""
     ctx.scenario = "operator_cyclic"
     if id_count < 1 or id_count > MAX_CYCLIC_IDS:
         raise SystemExit(f"--cyclic-ids 는 1..{MAX_CYCLIC_IDS} 범위여야 합니다")
     code = "OP_CYCLE_A" if id_count <= 264 else "OP_LARGE"
     assigned = list(range(1, id_count + 1))
-    ips = ["203.0.113.50"] if id_count > 264 else ["203.0.113.10", "203.0.113.11"]
+    shared = operator_shared_ips(operator_shared_ip_count)
     token_op = op_code(operator_code_enabled, code)
     for i in range(sample):
         customer_id = assigned[i % len(assigned)]
-        source_ip = ips[i % len(ips)]
+        source_ip = shared[i % len(shared)]
         token = issue(ctx, customer_id, token_op)
         order_id = bola_model.order_id_for(customer_id, 0)
         owner = bola_model.customer_id_for_order(order_id)
@@ -380,7 +446,7 @@ def run_cyclic_operator(ctx: Ctx, rows, sample: int, id_count: int, operator_cod
             issued_at=None,
             owner_customer_id=owner,
             notes=(
-                f"순환형 멀티계정 id_count={id_count}, "
+                f"운영사 공유 IP×{len(shared)} · 다계정 id_count={id_count}, "
                 f"operator_code={'on' if operator_code_enabled else 'off'}"
             ),
             operator_code_enabled=operator_code_enabled,
@@ -419,10 +485,16 @@ def run_fixed_operator(ctx: Ctx, rows, sample: int, operator_code_enabled: bool)
         )
 
 
-def run_access_token_reissue(ctx: Ctx, rows, operator_code_enabled: bool):
+def run_access_token_reissue(
+    ctx: Ctx,
+    rows,
+    operator_code_enabled: bool,
+    xff_ip_count: int = DEFAULT_XFF_IP_COUNT,
+):
     ctx.scenario = "access_token_reissue"
     code = "OP_FIXED_B"
     customer_id = bola_model.OPERATORS[code]["customer_ids"][0]
+    source_ip = user_source_ip(customer_id, ip_count=xff_ip_count)
     order_id = bola_model.order_id_for(customer_id, 0)
     owner = bola_model.customer_id_for_order(order_id)
     path = f"/api/v1/orders/{order_id}"
@@ -434,7 +506,7 @@ def run_access_token_reissue(ctx: Ctx, rows, operator_code_enabled: bool):
         token = issue(ctx, customer_id, token_op, issued_at=issued_at)
         tokens.append(token)
         expected = bola_model.expected_label(customer_id, token_op, owner)
-        status, _body = get_private(ctx, token, path, "198.51.100.10", expected=expected)
+        status, _body = get_private(ctx, token, path, source_ip, expected=expected)
         record(
             rows,
             scenario="access_token_reissue",
@@ -442,21 +514,27 @@ def run_access_token_reissue(ctx: Ctx, rows, operator_code_enabled: bool):
             method="GET",
             path=path,
             status=status,
-            source_ip="198.51.100.10",
+            source_ip=source_ip,
             operator_code=token_op,
             customer_id=customer_id,
             issued_at=issued_at,
             owner_customer_id=owner,
-            notes="24h access_token 재발급 (iat/exp만 변경)",
+            notes="24h access_token 재발급 (iat/exp만 변경, per-user XFF)",
             operator_code_enabled=operator_code_enabled,
         )
     if len(set(tokens)) != 3:
         raise SystemExit("access_token_reissue 는 일자마다 다른 accessToken 이어야 합니다")
 
 
-def run_cross_customer_bola(ctx: Ctx, rows, operator_code_enabled: bool):
+def run_cross_customer_bola(
+    ctx: Ctx,
+    rows,
+    operator_code_enabled: bool,
+    xff_ip_count: int = DEFAULT_XFF_IP_COUNT,
+):
     ctx.scenario = "cross_customer_bola"
     attacker_id = 410
+    source_ip = user_source_ip(attacker_id, ip_count=xff_ip_count)
     victim_order = bola_model.order_id_for(1, 0)
     victim_payment = bola_model.payment_id_for(1, 0)
     victim_pet = bola_model.pet_id_for(1)
@@ -469,7 +547,7 @@ def run_cross_customer_bola(ctx: Ctx, rows, operator_code_enabled: bool):
     ]
     for path, owner, note in targets:
         expected = bola_model.expected_label(attacker_id, None, owner)
-        status, _body = get_private(ctx, token, path, "192.0.2.99", expected=expected)
+        status, _body = get_private(ctx, token, path, source_ip, expected=expected)
         record(
             rows,
             scenario="cross_customer_bola",
@@ -477,7 +555,7 @@ def run_cross_customer_bola(ctx: Ctx, rows, operator_code_enabled: bool):
             method="GET",
             path=path,
             status=status,
-            source_ip="192.0.2.99",
+            source_ip=source_ip,
             operator_code=None,
             customer_id=attacker_id,
             issued_at=None,
@@ -487,9 +565,16 @@ def run_cross_customer_bola(ctx: Ctx, rows, operator_code_enabled: bool):
         )
 
 
-def run_id_enumeration(ctx: Ctx, rows, count: int, operator_code_enabled: bool):
+def run_id_enumeration(
+    ctx: Ctx,
+    rows,
+    count: int,
+    operator_code_enabled: bool,
+    xff_ip_count: int = DEFAULT_XFF_IP_COUNT,
+):
     ctx.scenario = "id_enumeration"
     attacker_id = 410
+    source_ip = user_source_ip(attacker_id, ip_count=xff_ip_count)
     token = issue(ctx, attacker_id, None)
     start = bola_model.order_id_for(1, 0)
     for offset in range(count):
@@ -497,7 +582,7 @@ def run_id_enumeration(ctx: Ctx, rows, count: int, operator_code_enabled: bool):
         owner = bola_model.customer_id_for_order(order_id)
         path = f"/api/v1/orders/{order_id}"
         expected = bola_model.expected_label(attacker_id, None, owner)
-        status, _body = get_private(ctx, token, path, "192.0.2.99", expected=expected)
+        status, _body = get_private(ctx, token, path, source_ip, expected=expected)
         record(
             rows,
             scenario="id_enumeration",
@@ -505,7 +590,7 @@ def run_id_enumeration(ctx: Ctx, rows, count: int, operator_code_enabled: bool):
             method="GET",
             path=path,
             status=status,
-            source_ip="192.0.2.99",
+            source_ip=source_ip,
             operator_code=None,
             customer_id=attacker_id,
             issued_at=None,
@@ -515,10 +600,16 @@ def run_id_enumeration(ctx: Ctx, rows, count: int, operator_code_enabled: bool):
         )
 
 
-def run_account_body_bola(ctx: Ctx, rows, operator_code_enabled: bool):
+def run_account_body_bola(
+    ctx: Ctx,
+    rows,
+    operator_code_enabled: bool,
+    xff_ip_count: int = DEFAULT_XFF_IP_COUNT,
+):
     """P1b: private resource is accountNo in JSON body (not path)."""
     ctx.scenario = "account_body_bola"
     attacker_id = 410
+    source_ip = user_source_ip(attacker_id, ip_count=xff_ip_count)
     path = "/api/v1/accounts/inquire"
     token = issue(ctx, attacker_id, None)
     # own account then foreign accounts via Body field
@@ -533,7 +624,7 @@ def run_account_body_bola(ctx: Ctx, rows, operator_code_enabled: bool):
             ctx,
             token,
             path,
-            "192.0.2.99",
+            source_ip,
             {"accountNo": account_no},
             expected=expected,
             meta={"accountNo": account_no},
@@ -545,7 +636,7 @@ def run_account_body_bola(ctx: Ctx, rows, operator_code_enabled: bool):
             method="POST",
             path=path,
             status=status,
-            source_ip="192.0.2.99",
+            source_ip=source_ip,
             operator_code=None,
             customer_id=attacker_id,
             issued_at=None,
@@ -555,10 +646,16 @@ def run_account_body_bola(ctx: Ctx, rows, operator_code_enabled: bool):
         )
 
 
-def run_abnormal_probe(ctx: Ctx, rows, operator_code_enabled: bool):
+def run_abnormal_probe(
+    ctx: Ctx,
+    rows,
+    operator_code_enabled: bool,
+    xff_ip_count: int = DEFAULT_XFF_IP_COUNT,
+):
     """P3: a few benign self lookups, then sudden foreign object probing."""
     ctx.scenario = "abnormal_probe"
     customer_id = 410
+    source_ip = user_source_ip(customer_id, ip_count=xff_ip_count)
     token = issue(ctx, customer_id, None)
     # benign self — path id == customer_id
     for path, owner in (
@@ -566,7 +663,7 @@ def run_abnormal_probe(ctx: Ctx, rows, operator_code_enabled: bool):
         (f"/api/v1/payments/{customer_id}", customer_id),
     ):
         expected = bola_model.expected_label(customer_id, None, owner)
-        status, _body = get_private(ctx, token, path, "192.0.2.60", expected=expected)
+        status, _body = get_private(ctx, token, path, source_ip, expected=expected)
         record(
             rows,
             scenario="abnormal_probe",
@@ -574,7 +671,7 @@ def run_abnormal_probe(ctx: Ctx, rows, operator_code_enabled: bool):
             method="GET",
             path=path,
             status=status,
-            source_ip="192.0.2.60",
+            source_ip=source_ip,
             operator_code=None,
             customer_id=customer_id,
             issued_at=None,
@@ -588,7 +685,7 @@ def run_abnormal_probe(ctx: Ctx, rows, operator_code_enabled: bool):
         owner = bola_model.customer_id_for_order(order_id)
         path = f"/api/v1/orders/{order_id}"
         expected = bola_model.expected_label(customer_id, None, owner)
-        status, _body = get_private(ctx, token, path, "192.0.2.60", expected=expected)
+        status, _body = get_private(ctx, token, path, source_ip, expected=expected)
         record(
             rows,
             scenario="abnormal_probe",
@@ -596,7 +693,7 @@ def run_abnormal_probe(ctx: Ctx, rows, operator_code_enabled: bool):
             method="GET",
             path=path,
             status=status,
-            source_ip="192.0.2.60",
+            source_ip=source_ip,
             operator_code=None,
             customer_id=customer_id,
             issued_at=None,
@@ -658,10 +755,12 @@ LEARN_BENIGN_SCENARIOS = BATCH_BENIGN_SCENARIOS  # alias
 
 
 def run_selected(ctx: Ctx, rows, name: str, args, operator_code_enabled: bool):
+    xff_ip_count = getattr(args, "xff_ip_count", DEFAULT_XFF_IP_COUNT)
+    operator_shared = getattr(args, "operator_shared_ips", DEFAULT_OPERATOR_SHARED_IPS)
     if name == "public_catalog":
         run_catalog(ctx, rows, args.catalog, operator_code_enabled)
     elif name == "self_order":
-        run_self_orders(ctx, rows, operator_code_enabled)
+        run_self_orders(ctx, rows, operator_code_enabled, xff_ip_count=xff_ip_count)
     elif name == "matched_order_learn":
         run_matched_order_learn(
             ctx,
@@ -669,6 +768,7 @@ def run_selected(ctx: Ctx, rows, name: str, args, operator_code_enabled: bool):
             args.matched_customers,
             args.matched_rounds,
             operator_code_enabled,
+            xff_ip_count=xff_ip_count,
         )
     elif name == "matched_account_learn":
         run_matched_account_learn(
@@ -677,21 +777,39 @@ def run_selected(ctx: Ctx, rows, name: str, args, operator_code_enabled: bool):
             args.matched_customers,
             args.matched_rounds,
             operator_code_enabled,
+            xff_ip_count=xff_ip_count,
         )
     elif name == "operator_cyclic":
-        run_cyclic_operator(ctx, rows, args.cyclic, args.cyclic_ids, operator_code_enabled)
+        run_cyclic_operator(
+            ctx,
+            rows,
+            args.cyclic,
+            args.cyclic_ids,
+            operator_code_enabled,
+            operator_shared_ip_count=operator_shared,
+        )
     elif name == "operator_fixed":
         run_fixed_operator(ctx, rows, args.fixed, operator_code_enabled)
     elif name == "access_token_reissue":
-        run_access_token_reissue(ctx, rows, operator_code_enabled)
+        run_access_token_reissue(
+            ctx, rows, operator_code_enabled, xff_ip_count=xff_ip_count
+        )
     elif name == "cross_customer_bola":
-        run_cross_customer_bola(ctx, rows, operator_code_enabled)
+        run_cross_customer_bola(
+            ctx, rows, operator_code_enabled, xff_ip_count=xff_ip_count
+        )
     elif name == "account_body_bola":
-        run_account_body_bola(ctx, rows, operator_code_enabled)
+        run_account_body_bola(
+            ctx, rows, operator_code_enabled, xff_ip_count=xff_ip_count
+        )
     elif name == "id_enumeration":
-        run_id_enumeration(ctx, rows, args.enum, operator_code_enabled)
+        run_id_enumeration(
+            ctx, rows, args.enum, operator_code_enabled, xff_ip_count=xff_ip_count
+        )
     elif name == "abnormal_probe":
-        run_abnormal_probe(ctx, rows, operator_code_enabled)
+        run_abnormal_probe(
+            ctx, rows, operator_code_enabled, xff_ip_count=xff_ip_count
+        )
     else:
         raise SystemExit(f"알 수 없는 시나리오: {name}")
 
@@ -748,6 +866,27 @@ def main():
             f"matched_order_learn: 1..N 전체 사이클 반복 횟수 "
             f"1..{MAX_MATCHED_ROUNDS} (기본 {DEFAULT_MATCHED_ROUNDS}; "
             f"예: --matched-customers 300 --matched-rounds 100)"
+        ),
+    )
+    parser.add_argument(
+        "--xff-ip-count",
+        type=int,
+        default=DEFAULT_XFF_IP_COUNT,
+        help=(
+            f"일반 시나리오: 사용자(customer_id)별 X-Forwarded-For 풀 크기 "
+            f"1..{MAX_XFF_IP_COUNT} (기본 {DEFAULT_XFF_IP_COUNT}, XC IP 식별 학습 권장 ≥30). "
+            f"같은 사용자는 라운드가 바뀌어도 같은 XFF. "
+            f"운영사 공유 IP 시나리오(operator_cyclic/fixed)에는 적용하지 않음"
+        ),
+    )
+    parser.add_argument(
+        "--operator-shared-ips",
+        type=int,
+        default=DEFAULT_OPERATOR_SHARED_IPS,
+        help=(
+            f"operator_cyclic 전용: 운영사가 쓰는 공유 IP 개수 "
+            f"1..{MAX_OPERATOR_SHARED_IPS} (기본 {DEFAULT_OPERATOR_SHARED_IPS}). "
+            f"다계정 → 소수 IP 오탐 재현"
         ),
     )
     parser.add_argument("--enum", type=int, default=20, help="ID 열거 샘플 수")
@@ -856,6 +995,8 @@ def main():
     summary = summarize(rows)
     summary["operator_code_enabled"] = args.operator_code_enabled
     summary["cyclic_ids"] = args.cyclic_ids
+    summary["xff_ip_count"] = args.xff_ip_count
+    summary["operator_shared_ips"] = args.operator_shared_ips
     summary["repeat"] = repeats
     summary["http_exchanges"] = logger._seq
     summary["http_log"] = str(http_path) if http_path else None
